@@ -14,6 +14,8 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.worksheet.datavalidation import DataValidation
 
 OUT = Path(__file__).resolve().parent.parent / "Policy_Review_Template.xlsx"
+# Blank copy for advisers to fill in (no sample rows); the app embeds this one for its download button
+OUT_BLANK = Path(__file__).resolve().parent.parent / "Policy_Review_Template_blank.xlsx"
 
 PURPLE = "6B3FA0"
 PINK = "D94F8C"
@@ -102,7 +104,7 @@ def title(ws, text, sub):
     ws["A2"].font = Font(italic=True, size=10, color="7A6A8C")
 
 
-def build_client(wb):
+def build_client(wb, blank=False):
     ws = wb.create_sheet("Client")
     title(ws, "Client Info  客户资料", "Fill column B. Review standards are YOUR planning benchmarks, not official figures.")
     ws.column_dimensions["A"].width = 38
@@ -110,6 +112,8 @@ def build_client(wb):
     ws.column_dimensions["C"].width = 40
     r = 4
     for label, val in SAMPLE_CLIENT:
+        if blank:
+            val = None
         ws.cell(r, 1, label).font = Font(bold=True)
         c = ws.cell(r, 2, val)
         c.fill = lilac_fill
@@ -145,7 +149,7 @@ def build_client(wb):
     return ws
 
 
-def build_policies(wb):
+def build_policies(wb, blank=False):
     ws = wb.create_sheet("Policies")
     for i, (h, w) in enumerate(POLICY_COLS, 1):
         c = ws.cell(1, i, h)
@@ -164,7 +168,7 @@ def build_policies(wb):
     ws.row_dimensions[1].height = 42
     ws.freeze_panes = "B2"
 
-    for r, row in enumerate(SAMPLE_POLICIES, 2):
+    for r, row in enumerate([] if blank else SAMPLE_POLICIES, 2):
         for c, v in enumerate(row, 1):
             cell = ws.cell(r, c, v)
             cell.border = BOX
@@ -294,7 +298,7 @@ def build_dashboard(wb):
     ws.merge_cells("A41:E43")
 
 
-def build_guide(wb):
+def build_guide(wb, blank=False):
     ws = wb.create_sheet("Guide")
     ws.column_dimensions["A"].width = 110
     lines = [
@@ -309,17 +313,19 @@ def build_guide(wb):
         "Only Inforce policies count toward coverage totals. Lapsed/Paid-up are listed separately.",
         "The rows marked (sample) are fictional - delete them before using with a real client.",
     ]
+    if blank:
+        lines[-1] = "Insurer and Purpose columns have dropdown lists - you can also type any other name."
     for r, t in enumerate(lines, 1):
         ws.cell(r, 1, t).font = Font(bold=(r == 1), size=14 if r == 1 else 11, color=PURPLE if r == 1 else "333333")
 
 
-def main():
+def build(out, blank=False):
     wb = Workbook()
     wb.remove(wb.active)
     build_dashboard(wb)
-    build_client(wb)
-    build_policies(wb)
-    build_guide(wb)
+    build_client(wb, blank)
+    build_policies(wb, blank)
+    build_guide(wb, blank)
     lists = wb.create_sheet("Lists")
     lists["A1"] = "Insurer (Malaysia life & family takaful)"
     for r, name in enumerate(INSURERS, 2):
@@ -327,8 +333,13 @@ def main():
     lists.sheet_state = "hidden"
     wb["Dashboard"].sheet_properties.tabColor = PINK
     wb["Policies"].sheet_properties.tabColor = PURPLE
-    wb.save(OUT)
-    print(f"Saved {OUT}")
+    wb.save(out)
+    print(f"Saved {out}")
+
+
+def main():
+    build(OUT)
+    build(OUT_BLANK, blank=True)
 
 
 if __name__ == "__main__":

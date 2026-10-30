@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT.parent / "policy-review-app"
-VERSION = "2026-10-30"          # bump to make installed apps pick up a new version
+VERSION = "2026-10-30b"          # bump to make installed apps pick up a new version
 
 OUT.mkdir(exist_ok=True)
 (OUT / "icons").mkdir(exist_ok=True)
@@ -101,10 +101,11 @@ icon(512, pad=0.06).save(OUT / "icons" / "icon-maskable-512.png")
 
 # ---- supporting files (no client data)
 shutil.copy(ROOT / "Policy_Review_Template.xlsx", OUT / "Policy_Review_Template.xlsx")
+shutil.copy(ROOT / "Policy_Review_Template_blank.xlsx", OUT / "Policy_Review_Template_blank.xlsx")
 (OUT / "sample").mkdir(exist_ok=True)
 shutil.copy(ROOT / "sample-output" / "SAMPLE - Policy Review - TAN MEI LING.pdf", OUT / "sample" / "sample-report-fictional.pdf")
 (OUT / "tools").mkdir(exist_ok=True)
-for f in ("build_template.py", "make_pwa.py"):
+for f in ("build_template.py", "embed_template.py", "make_pwa.py"):
     shutil.copy(ROOT / "tools" / f, OUT / "tools" / f)
 # README.md in the app folder is written for the public repo (HOW TO USE.md mentions private files, so it is not copied)
 (OUT / ".nojekyll").write_text("", encoding="utf-8")

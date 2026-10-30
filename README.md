@@ -14,7 +14,7 @@ Everything runs in your browser. Excel files you load are read on your own devic
 
 ## How to use
 
-1. **Load** your policy summary Excel, an ePartner export, or `Policy_Review_Template.xlsx` (or try *Load sample client*).
+1. **Load** — click *Download blank template* to get a template to fill in, or load your policy summary Excel, an ePartner export, or `Policy_Review_Template.xlsx` (or try *Load sample client*).
 2. **Confirm columns** — matched automatically; check and adjust if needed.
 3. **Client details** — name, age, review date, EPF / PRS balances, review standards (fixed RM or × annual income) and report style (Standard / DISC D · I · S · C).
 4. **Add a policy** (optional) — e.g. a policy from another insurer.
@@ -29,7 +29,8 @@ Review standards are planning benchmarks chosen by the adviser, not official fig
 | File | Purpose |
 |---|---|
 | `index.html` | The app |
-| `Policy_Review_Template.xlsx` | Input template with dropdowns and an Excel-only dashboard |
+| `Policy_Review_Template_blank.xlsx` | Blank template to fill in (also downloadable from the app's *Download blank template* button) |
+| `Policy_Review_Template.xlsx` | Same template with fictional sample rows |
 | `sample/sample-report-fictional.pdf` | Example report (fictional client) |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Make the app installable and usable offline |
 | `tools/` | Scripts that rebuild the template and this app folder |
