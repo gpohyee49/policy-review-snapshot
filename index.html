@@ -263,13 +263,14 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
   <div class="card no-print" id="stepLoad">
     <h2><span class="step">1</span>Load policy data <span class="zh">载入保单资料</span></h2>
     <div class="row">
+      <button class="primary" id="btnManual">✍ New client — type in 新客户手动输入</button>
       <input type="file" id="fileIn" accept=".xlsx,.xls,.csv">
       <button id="btnTemplate">⬇ Download blank template 下载空白模板</button>
       <button id="btnSample">Load sample client (fictional)</button>
-      <button id="btnReset">Start new client</button>
+      <button id="btnReset">Clear 清空</button>
       <span id="srcName" class="muted"></span>
     </div>
-    <p class="muted" style="margin:8px 0 0">Accepts <b>Policy_Review_Template.xlsx</b>, your own policy summary, or an ePartner export (.xlsx / .csv). Excel files are read inside your browser only.</p>
+    <p class="muted" style="margin:8px 0 0"><b>New client with no file?</b> Press <i>New client — type in</i>, fill in the client's details, then add each policy under <b>Policies</b>. <span class="zh">没有文件的新客户：按「新客户手动输入」，填客户资料，再到「保单」逐份加入。</span><br>Or load a file: accepts <b>Policy_Review_Template.xlsx</b>, your own policy summary, or an ePartner export (.xlsx / .csv). Excel files are read inside your browser only.</p>
     <div class="shot-box" id="driveBox" hidden>
       <div class="row"><b>Google Drive client 从 Google Drive 选客户</b>
         <button id="btnDriveList">Load my client list 载入客户名单</button>
@@ -585,6 +586,17 @@ $('btnReset').onclick = async () => {
   resetState(); $('srcName').textContent = ''; $('fileIn').value = ''; $('shotIn').value = ''; renderThumbs();
   ['stepMap','stepClient','stepAdd','stepPurpose','stepMed','stepCheck','stepGen'].forEach(id=>$(id).classList.add('hidden'));
   goTab('load');
+};
+/* New client with no file: skip loading / column matching and type everything in */
+$('btnManual').onclick = async () => {
+  if (S.policies.length && !S.isSample && !await ask('Clear the client currently on screen and start a new client by typing in?')) return;
+  resetState(); S.source = 'Typed in app'; $('fileIn').value = ''; $('shotIn').value = ''; renderThumbs();
+  $('srcName').textContent = 'New client — typed in 手动输入';
+  renderClient(); buildPolicies(); runChecks(); renderPurposes(); renderMed(); renderAddForm(); renderAdded();
+  $('stepMap').classList.add('hidden');
+  ['stepClient','stepAdd','stepPurpose','stepMed','stepCheck','stepGen'].forEach(id=>$(id).classList.remove('hidden'));
+  goTab('client');
+  setTimeout(()=>$('cl_name')?.focus(), 50);
 };
 function resetState(){ Object.assign(S,{source:'',headers:[],rows:[],rowNos:[],defaults:{},mapping:{},policies:[],issues:[],changeLog:[],client:{},added:[],medCards:{},mapOpen:false,generated:false,isSample:false,shots:[],shotInfo:null,drive:null}); $('report').innerHTML=''; renderAdded(); }
 
@@ -933,9 +945,10 @@ $('ackWarn').onchange = updateGenState;
 function updateGenState(){
   if (typeof renderTabs==='function') setTimeout(renderTabs);
   const e = S.issues.some(i=>i.level==='error'), w = S.issues.some(i=>i.level==='warn');
-  const ok = !e && (!w || $('ackWarn').checked);
+  const none = !S.policies.length;
+  const ok = !none && !e && (!w || $('ackWarn').checked);
   $('btnGen').disabled = !ok;
-  $('genHint').textContent = e ? 'Fix the "Must fix" items first.' : (w && !$('ackWarn').checked) ? 'Tick "I\'ve reviewed the warnings" first.' : '';
+  $('genHint').textContent = none ? 'Add at least one policy under Policies first. 请先在「保单」加入保单。' : e ? 'Fix the "Must fix" items first.' : (w && !$('ackWarn').checked) ? 'Tick "I\'ve reviewed the warnings" first.' : '';
   $('btnPdf').disabled = $('btnXlsx').disabled = !(ok && S.generated);
 }
 
