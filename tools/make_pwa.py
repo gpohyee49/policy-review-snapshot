@@ -7,11 +7,10 @@ never real-test/ or any client data).
 import shutil
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT.parent / "policy-review-app"
-VERSION = "2026-10-30c"          # bump to make installed apps pick up a new version
+VERSION = "2026-10-30d"          # bump to make installed apps pick up a new version
 
 OUT.mkdir(exist_ok=True)
 (OUT / "icons").mkdir(exist_ok=True)
@@ -33,6 +32,9 @@ sw_reg = """<script>
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
 </script>
 </body>"""
+# Installable build: lock screen visible from the first paint (the script then asks to set or enter the PIN)
+assert html.count('<div id="lock" class="lock" hidden>') == 1
+html = html.replace('<div id="lock" class="lock" hidden>', '<div id="lock" class="lock">')
 assert html.count("</body>") == 1
 html = html.replace("</body>", sw_reg)
 (OUT / "index.html").write_text(html, encoding="utf-8")
@@ -76,29 +78,16 @@ self.addEventListener('fetch', e => {{
 }});
 """, encoding="utf-8")
 
-# ---- icons: purple-pink gradient with a simple shield + tick
-def icon(size, pad=0.0):
-    img = Image.new("RGB", (size, size))
-    d = ImageDraw.Draw(img)
-    a, b = (0x6B, 0x3F, 0xA0), (0xD9, 0x4F, 0x8C)
-    for y in range(size):
-        t = y / size
-        d.line([(0, y), (size, y)], fill=tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3)))
-    m = size * (0.22 + pad)
-    w = size - 2 * m
-    cx = size / 2
-    shield = [(cx, m), (cx + w / 2, m + w * 0.16), (cx + w / 2, m + w * 0.55), (cx, m + w * 1.02),
-              (cx - w / 2, m + w * 0.55), (cx - w / 2, m + w * 0.16)]
-    d.polygon(shield, fill=(255, 255, 255))
-    lw = max(3, int(size * 0.05))
-    d.line([(cx - w * 0.22, m + w * 0.5), (cx - w * 0.04, m + w * 0.68), (cx + w * 0.26, m + w * 0.32)],
-           fill=(0x6B, 0x3F, 0xA0), width=lw, joint="curve")
-    return img
+# ---- icons: design A "report" (see tools/icons.py)
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from icons import draw_icon
+icon = lambda size, pad=0.0: draw_icon("report", size, pad)
 
 icon(192).save(OUT / "icons" / "icon-192.png")
 icon(180).save(OUT / "icons" / "apple-touch-icon.png")
 icon(512).save(OUT / "icons" / "icon-512.png")
-icon(512, pad=0.06).save(OUT / "icons" / "icon-maskable-512.png")
+icon(512, pad=0.08).save(OUT / "icons" / "icon-maskable-512.png")
 
 # ---- supporting files (no client data)
 shutil.copy(ROOT / "Policy_Review_Template.xlsx", OUT / "Policy_Review_Template.xlsx")
@@ -106,7 +95,7 @@ shutil.copy(ROOT / "Policy_Review_Template_blank.xlsx", OUT / "Policy_Review_Tem
 (OUT / "sample").mkdir(exist_ok=True)
 shutil.copy(ROOT / "sample-output" / "SAMPLE - Policy Review - TAN MEI LING.pdf", OUT / "sample" / "sample-report-fictional.pdf")
 (OUT / "tools").mkdir(exist_ok=True)
-for f in ("build_template.py", "embed_template.py", "make_pwa.py"):
+for f in ("build_template.py", "embed_template.py", "icons.py", "make_pwa.py"):
     shutil.copy(ROOT / "tools" / f, OUT / "tools" / f)
 # README.md in the app folder is written for the public repo (HOW TO USE.md mentions private files, so it is not copied)
 (OUT / ".nojekyll").write_text("", encoding="utf-8")

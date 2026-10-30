@@ -38,6 +38,17 @@ input,select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-ra
 .app-bar p{margin:2px 0 0;opacity:.9;font-size:13px}
 .wrap{max-width:1100px;margin:0 auto;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 [hidden]{display:none!important}
+.lock{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;
+  background:linear-gradient(135deg,var(--purple),var(--pink))}
+.lock-card{background:var(--paper);color:var(--ink);border-radius:16px;padding:24px 22px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px;text-align:center;box-shadow:0 12px 40px rgba(43,34,56,.35)}
+.lock-card h2{margin:0;color:var(--purple);font-size:19px}
+.lock-card p{margin:0}
+.lock-card input{font-size:22px;text-align:center;letter-spacing:.3em;padding:10px}
+.lock-card input::placeholder{letter-spacing:normal;font-size:14px}
+.lock-icon{font-size:30px}
+.lock-err{color:var(--bad);min-height:1.2em;font-size:13px}
+.lock-help{font-size:11.5px}
+.bar-btns{display:flex;gap:6px;flex-wrap:wrap}
 .bar-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .install{background:#fff;color:var(--purple);border:0;font-weight:700;padding:7px 14px;border-radius:999px}
 .ios-tip{margin-top:8px;background:rgba(255,255,255,.18);border-radius:8px;padding:8px 10px;font-size:12.5px}
@@ -193,10 +204,27 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
 </style>
 </head>
 <body>
+<div id="lock" class="lock">
+  <form class="lock-card" id="lockForm" autocomplete="off">
+    <div class="lock-icon" aria-hidden="true">🔒</div>
+    <h2 id="lockTitle">Enter PIN 输入密码</h2>
+    <p id="lockMsg" class="muted"></p>
+    <input id="lockPin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" aria-label="PIN">
+    <input id="lockPin2" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter again 再输入一次" aria-label="Confirm PIN" hidden>
+    <button class="primary" id="lockGo" type="submit">Unlock 解锁</button>
+    <p id="lockErr" class="lock-err" role="alert"></p>
+    <p class="muted lock-help">Forgot your PIN? Clear this site's data in your browser settings, then set a new one. Your clients' data is never stored in the app.
+      <span class="zh">忘记密码：在浏览器设置里清除本网站资料，再设新密码。</span></p>
+  </form>
+</div>
 <div class="app-bar no-print">
   <div class="bar-top">
     <h1>Policy Review Snapshot <span class="zh">保单检视摘要</span></h1>
-    <button id="btnInstall" class="install" hidden>＋ Install app 安装</button>
+    <span class="bar-btns">
+      <button id="btnInstall" class="install" hidden>＋ Install app 安装</button>
+      <button id="btnLockNow" class="install" hidden title="Lock the app now">🔒 Lock</button>
+      <button id="btnChangePin" class="install" hidden>Change PIN 改密码</button>
+    </span>
   </div>
   <p>See a client's existing cover, premium, nominees and purpose on one page, then hand them a report to keep.</p>
   <div id="iosTip" class="ios-tip" hidden>To install on iPhone: tap <b>Share</b> <span aria-hidden="true">⎋</span> then <b>Add to Home Screen</b>. 安装到 iPhone：点<b>分享</b>，再选<b>添加到主屏幕</b>。 <button id="iosTipClose" aria-label="Close">✕</button></div>
@@ -1281,6 +1309,61 @@ addEventListener('appinstalled', () => { $('btnInstall').hidden = true; });
   let dismissed = false; try { dismissed = localStorage.getItem('iosTipClosed') === '1'; } catch(e) {}
   if (installable && ios && !standalone && !dismissed) $('iosTip').hidden = false;
   $('iosTipClose').onclick = () => { $('iosTip').hidden = true; try { localStorage.setItem('iosTipClosed','1'); } catch(e) {} };
+})();
+
+
+/* ================= PIN lock (installable GitHub build only) =================
+   Keeps other people who pick up this phone or computer out of the app. The PIN is stored only on this
+   device, as a salted SHA-256 hash. It is not server-side security: the app is a public web page, and no
+   client data is ever stored in it. */
+const PinLock = (() => {
+  const KEY = 'prs-pin-v1', RELOCK_MS = 10 * 60 * 1000;
+  const enabled = !!document.querySelector('link[rel="manifest"]') && !!(window.crypto && crypto.subtle);
+  const store = { get(){ try { return JSON.parse(localStorage.getItem(KEY)); } catch(e){ return null; } },
+                  set(v){ try { localStorage.setItem(KEY, JSON.stringify(v)); return true; } catch(e){ return false; } } };
+  const hex = buf => [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  const hash = async (pin, salt) => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + ':' + pin)));
+  let mode = 'unlock', fails = 0, waitUntil = 0, hiddenAt = 0;
+  const show = (m) => {
+    mode = m;
+    const setting = m !== 'unlock';
+    $('lockTitle').textContent = m==='set' ? 'Set a PIN 设定密码' : m==='change' ? 'New PIN 新密码' : 'Enter PIN 输入密码';
+    $('lockMsg').textContent = setting ? 'At least 4 digits or characters. You will enter it each time the app opens. 至少 4 位，每次打开 app 都要输入。' : '';
+    $('lockPin2').hidden = !setting;
+    $('lockGo').textContent = setting ? 'Save PIN 保存' : 'Unlock 解锁';
+    $('lockPin').value = $('lockPin2').value = ''; $('lockErr').textContent = '';
+    $('lock').hidden = false; setTimeout(()=>$('lockPin').focus(), 50);
+  };
+  $('lockForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const pin = $('lockPin').value;
+    if (mode === 'unlock'){
+      if (Date.now() < waitUntil) { $('lockErr').textContent = `Too many tries. Wait ${Math.ceil((waitUntil-Date.now())/1000)}s. 请稍候再试。`; return; }
+      const saved = store.get();
+      if (saved && await hash(pin, saved.salt) === saved.hash){ fails = 0; $('lock').hidden = true; return; }
+      fails++; if (fails >= 5){ waitUntil = Date.now() + 30000; fails = 0; }
+      $('lockErr').textContent = 'Wrong PIN 密码错误'; $('lockPin').value = ''; return;
+    }
+    if (pin.length < 4) { $('lockErr').textContent = 'Use at least 4 digits or characters. 至少 4 位。'; return; }
+    if (pin !== $('lockPin2').value) { $('lockErr').textContent = "The two entries don't match. 两次输入不一样。"; return; }
+    const salt = hex(crypto.getRandomValues(new Uint8Array(16)));
+    if (!store.set({salt, hash: await hash(pin, salt)})) { $('lockErr').textContent = 'This browser cannot save the PIN (private mode?).'; return; }
+    $('lock').hidden = true; $('btnLockNow').hidden = $('btnChangePin').hidden = false;
+    tell(mode==='change' ? 'PIN changed. 密码已更改。' : 'PIN saved. The app will ask for it each time it opens. 密码已设定。');
+  };
+  $('btnLockNow').onclick = () => show('unlock');
+  $('btnChangePin').onclick = () => show('change');
+  document.addEventListener('visibilitychange', () => {
+    if (!enabled || !store.get()) return;
+    if (document.hidden) hiddenAt = Date.now();
+    else if (hiddenAt && Date.now() - hiddenAt > RELOCK_MS && $('lock').hidden) show('unlock');
+  });
+  if (!enabled) $('lock').hidden = true;
+  if (enabled){
+    if (store.get()) { show('unlock'); $('btnLockNow').hidden = $('btnChangePin').hidden = false; }
+    else show('set');
+  }
+  return { enabled };
 })();
 
 /* ================= Hover tooltip ================= */
