@@ -51,6 +51,16 @@ input,select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-ra
 .lock-err{color:var(--bad);min-height:1.2em;font-size:13px}
 .lock-help{font-size:11.5px}
 .bar-btns{display:flex;gap:6px;flex-wrap:wrap}
+.med-steps{margin:0;padding-left:20px;font-size:11.5px}
+.med-steps li{margin:3px 0}
+.med-page .discuss ul{columns:2;column-gap:20px}
+.med-page .discuss li{break-inside:avoid;margin:0 0 6px;font-size:11px;line-height:1.4}
+.med-page .discuss li .zh{font-size:10.5px}
+.med-page .sec{margin:9px 0 5px}
+.med-page .tile{padding:7px 10px}
+.med-ex{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
+.med-ex div{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:11.5px}
+.med-ex b{display:block;font-size:17px;font-variant-numeric:tabular-nums;color:var(--ink)}
 .bar-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .install{background:#fff;color:var(--purple);border:0;font-weight:700;padding:7px 14px;border-radius:999px}
 .ios-tip{margin-top:8px;background:rgba(255,255,255,.18);border-radius:8px;padding:8px 10px;font-size:12.5px}
@@ -290,9 +300,27 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
     <div class="scroll-x"><table class="map" id="purposeTable"></table></div>
   </div>
 
+  <!-- MEDICAL CARD EXPLAINER -->
+  <div class="card no-print hidden" id="stepMed">
+    <h2><span class="step">6</span>Medical card explainer <span class="zh">医药卡说明（可选）</span></h2>
+    <p class="muted" style="margin-top:0">Adds one page at the end of the report that explains a medical card rider in plain words. Fill in only what you know from the policy contract or benefit schedule — blanks are left out of the page, never guessed.
+      <span class="zh">在报告最后加一页白话说明。只填合约或保障表上有的资料，空白的不会出现。</span></p>
+    <div class="row"><label>Policy 保单 <select id="medPolicy"></select></label></div>
+    <div id="medAi" class="shot-box" hidden>
+      <div class="row"><b>Fill with Claude 用 Claude 填写</b>
+        <input type="file" id="medImg" accept="image/png,image/jpeg,image/webp" multiple>
+        <button id="btnMedAi">Read benefit schedule</button><button id="btnMedStop" hidden>Stop</button></div>
+      <textarea id="medText" rows="3" placeholder="Or paste text from the brochure / contract here… 或在这里贴上计划书或合约文字" style="width:100%;margin-top:6px;font:inherit;padding:6px;border:1px solid var(--line);border-radius:6px"></textarea>
+      <div id="medAiMsg" class="muted"></div>
+    </div>
+    <div class="grid2" id="medForm" style="margin-top:10px"></div>
+    <div class="row" style="margin-top:10px"><button class="primary" id="btnMedSave">Save explainer page…</button><span id="medSaved" class="muted"></span></div>
+    <div id="medList"></div>
+  </div>
+
   <!-- CHECKS -->
   <div class="card no-print hidden" id="stepCheck">
-    <h2><span class="step">6</span>Data check <span class="zh">资料检查</span></h2>
+    <h2><span class="step">7</span>Data check <span class="zh">资料检查</span></h2>
     <div id="checkSummary"></div>
     <div class="scroll-x"><table class="issues" id="issueTable"></table></div>
     <div class="row" style="margin-top:10px">
@@ -305,7 +333,7 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
 
   <!-- GENERATE -->
   <div class="card no-print hidden" id="stepGen">
-    <h2><span class="step">7</span>Dashboard &amp; client report <span class="zh">仪表板与客户报告</span></h2>
+    <h2><span class="step">8</span>Dashboard &amp; client report <span class="zh">仪表板与客户报告</span></h2>
     <div class="row">
       <button class="primary" id="btnGen">Generate dashboard &amp; report</button>
       <button id="btnPdf" disabled>Save PDF report</button>
@@ -511,9 +539,9 @@ $('btnTemplate').onclick = async () => {
 $('btnReset').onclick = async () => {
   if (!await ask('Clear everything on screen and start a new client? (Your Excel file is not touched.)')) return;
   resetState(); $('srcName').textContent = ''; $('fileIn').value = ''; $('shotIn').value = ''; renderThumbs();
-  ['stepMap','stepClient','stepAdd','stepPurpose','stepCheck','stepGen'].forEach(id=>$(id).classList.add('hidden'));
+  ['stepMap','stepClient','stepAdd','stepPurpose','stepMed','stepCheck','stepGen'].forEach(id=>$(id).classList.add('hidden'));
 };
-function resetState(){ Object.assign(S,{source:'',headers:[],rows:[],rowNos:[],defaults:{},mapping:{},policies:[],issues:[],changeLog:[],client:{},added:[],mapOpen:false,generated:false,isSample:false,shots:[],shotInfo:null}); $('report').innerHTML=''; renderAdded(); }
+function resetState(){ Object.assign(S,{source:'',headers:[],rows:[],rowNos:[],defaults:{},mapping:{},policies:[],issues:[],changeLog:[],client:{},added:[],medCards:{},mapOpen:false,generated:false,isSample:false,shots:[],shotInfo:null}); $('report').innerHTML=''; renderAdded(); }
 
 function loadWorkbook(wb, name){
   resetState();
@@ -563,7 +591,7 @@ function afterLoad(){
   $('srcName').textContent = `Loaded: ${S.source} · ${S.rows.length} row(s)`;
   autoMap(); renderMap(); renderClient(); renderThumbs();
   ['stepMap','stepClient'].forEach(id=>$(id).classList.remove('hidden'));
-  ['stepAdd','stepPurpose','stepCheck','stepGen'].forEach(id=>$(id).classList.add('hidden'));
+  ['stepAdd','stepPurpose','stepMed','stepCheck','stepGen'].forEach(id=>$(id).classList.add('hidden'));
   $('stepMap').scrollIntoView({behavior:'smooth'});
 }
 
@@ -686,8 +714,8 @@ $('btnMap').onclick = async () => {
   if (defs.length && !await ask(`Your file has no column for:\n${defs.map(([k,v])=>`• ${FIELD[k].label} → I will set ALL ${S.rows.length} rows to "${v}"`).join('\n')}\n\nIs that correct for every policy in this file?`)) return;
   if (missing.length && !await ask(`These required columns are not matched:\n• ${missing.map(f=>f.label).join('\n• ')}\n\nContinue anyway? Each policy will be flagged so you can fill the value in by hand.`)) return;
   if (!FIELDS.some(f=>f.cov && S.mapping[f.key]>=0)){ tell('Please match at least one coverage column (Death, TPD, CI, Medical, etc.) — otherwise there is nothing to summarise.'); return; }
-  buildPolicies(); runChecks(); renderPurposes();
-  ['stepAdd','stepPurpose','stepCheck','stepGen'].forEach(id=>$(id).classList.remove('hidden')); renderAddForm();
+  buildPolicies(); runChecks(); renderPurposes(); renderMed();
+  ['stepAdd','stepPurpose','stepMed','stepCheck','stepGen'].forEach(id=>$(id).classList.remove('hidden')); renderAddForm();
   $('stepCheck').scrollIntoView({behavior:'smooth'});
 };
 
@@ -901,7 +929,7 @@ $('btnAdd').onclick = async () => {
   const log = {when:new Date().toLocaleString('en-MY'), policy:raw.policyNo, field:'Policy added in app', from:'(not in file)', to:`${raw.insurer} · ${raw.plan||raw.type||''}`.trim()};
   S.added.push({raw, log});
   S.policies.push(makeManualPolicy(raw)); S.changeLog.push(log);
-  renderAddForm(); renderAdded(); S.generated=false; runChecks(); renderPurposes();
+  renderAddForm(); renderAdded(); S.generated=false; runChecks(); renderPurposes(); renderMed();
 };
 function renderAdded(){
   const box = $('addedList'); if (!box) return;
@@ -913,7 +941,7 @@ function renderAdded(){
     S.added.splice(+b.dataset.rm,1);
     S.policies = S.policies.filter(p=>!(p._manual && String(p.policyNo)===a.raw.policyNo));
     S.changeLog.push({when:new Date().toLocaleString('en-MY'), policy:a.raw.policyNo, field:'Policy removed', from:a.log.to, to:'(removed)'});
-    renderAdded(); S.generated=false; runChecks(); renderPurposes();
+    renderAdded(); S.generated=false; runChecks(); renderPurposes(); renderMed();
   });
 }
 
@@ -953,6 +981,177 @@ function renderPurposes(){
     S.changeLog.push({when:new Date().toLocaleString('en-MY'), policy:pid(p), field:'Insurer', from, to:v||'(blank)'});
     renderChangeLog(); if (S.generated) generate({quiet:true});
   });
+}
+
+
+/* ================= Step 6: medical card explainer (one plain-language page per medical rider) ================= */
+const MED_FIELDS = [
+  {k:'name', en:'Medical rider name', zh:'医药附加保障名称', t:'text'},
+  {k:'roomBoard', en:'Room & board (RM/day)', zh:'房租/天', t:'num'},
+  {k:'annualLimit', en:'Annual limit (RM)', zh:'年度限额', t:'num'},
+  {k:'lifetimeLimit', en:'Lifetime limit (RM, blank or "No limit")', zh:'终身限额', t:'text'},
+  {k:'deductible', en:'Deductible (RM)', zh:'自付额', t:'num'},
+  {k:'deductibleBasis', en:'Deductible applies', zh:'自付额计算方式', t:'sel', opts:['','per policy year','per admission','per disability']},
+  {k:'coins', en:'Co-payment / co-insurance (%)', zh:'共同付款 %', t:'num'},
+  {k:'coinsCap', en:'Co-payment cap (RM per year)', zh:'共同付款上限/年', t:'num'},
+  {k:'cashless', en:'Cashless at panel hospitals (GL)', zh:'Panel 医院免付现', t:'sel', opts:['','Yes','No']},
+  {k:'preHosp', en:'Pre-hospitalisation (days)', zh:'住院前 (天)', t:'num'},
+  {k:'postHosp', en:'Post-hospitalisation (days)', zh:'出院后 (天)', t:'num'},
+  {k:'icu', en:'Intensive care (ICU)', zh:'加护病房', t:'text'},
+  {k:'outpatient', en:'Outpatient cancer / kidney dialysis', zh:'门诊癌症/洗肾', t:'text'},
+  {k:'hospIncome', en:'Hospital cash income (RM/day)', zh:'住院现金/天', t:'num'},
+  {k:'waiting', en:'Waiting period', zh:'等待期', t:'text'},
+  {k:'endAge', en:'Cover until age', zh:'保障至几岁', t:'num'},
+  {k:'notCovered', en:'Not covered (key exclusions)', zh:'不保项目', t:'text'},
+  {k:'notes', en:'Other key points', zh:'其他重点', t:'text'},
+  {k:'exampleBill', en:'Example bill for illustration (RM)', zh:'举例账单金额', t:'num'},
+];
+const medKeyOf = p => String(p.policyNo ?? pid(p));
+function medPolicies(){ return S.policies.filter(isInforce); }
+function renderMed(){
+  if (!$('medPolicy')) return;
+  const pols = medPolicies();
+  const cur = $('medPolicy').value;
+  // medical policies first: those with a medical limit or room & board
+  const sorted = [...pols].sort((a,b)=>((b.medLimit||b.roomBoard)?1:0)-((a.medLimit||a.roomBoard)?1:0));
+  $('medPolicy').innerHTML = sorted.map(p=>`<option value="${esc(medKeyOf(p))}">${esc(pid(p))} · ${esc(p.plan||p.type||'')}${(p.medLimit||p.roomBoard)?' · medical':''}${S.medCards[medKeyOf(p)]?' ✓':''}</option>`).join('');
+  if (cur && sorted.some(p=>medKeyOf(p)===cur)) $('medPolicy').value = cur;
+  loadMedForm();
+  $('medList').innerHTML = Object.keys(S.medCards).length ? `<div class="notice"><b>Explainer pages in the report 已加入说明页:</b><br>${Object.entries(S.medCards).map(([k,m])=>
+    `${esc(k)} · ${esc(m.name||'')} <button data-medrm="${esc(k)}" style="padding:2px 8px;margin:2px 0 2px 6px">Remove</button>`).join('<br>')}</div>` : '';
+  $('medList').querySelectorAll('[data-medrm]').forEach(b=>b.onclick=async()=>{
+    if (!await ask(`Remove the medical card explainer page for ${b.dataset.medrm}?`)) return;
+    delete S.medCards[b.dataset.medrm]; renderMed(); if (S.generated) generate({quiet:true});
+  });
+}
+function loadMedForm(fill){
+  const p = S.policies.find(x=>medKeyOf(x)===$('medPolicy').value);
+  const saved = p ? S.medCards[medKeyOf(p)] : null;
+  const v = fill || saved || (p ? {name:p.plan||'', roomBoard:p.roomBoard, annualLimit:p.medLimit, exampleBill:50000} : {});
+  $('medForm').innerHTML = MED_FIELDS.map(f=>{
+    const val = v[f.k] ?? '';
+    const input = f.t==='sel'
+      ? `<select data-med="${f.k}" id="med_${f.k}">${f.opts.map(o=>`<option ${String(val)===o?'selected':''} value="${o}">${o||'— not stated —'}</option>`).join('')}</select>`
+      : `<input data-med="${f.k}" id="med_${f.k}" ${f.t==='num'?'type="number" step="any" min="0"':''} value="${esc(val)}">`;
+    return `<label>${esc(f.en)} <span class="zh">${f.zh}</span>${input}</label>`;
+  }).join('');
+}
+$('medPolicy').onchange = () => loadMedForm();
+function readMedForm(){
+  const m = {};
+  MED_FIELDS.forEach(f=>{ const el = $('med_'+f.k); const v = el.value.trim(); if (v!=='') m[f.k] = f.t==='num' ? +v : v; });
+  return m;
+}
+$('btnMedSave').onclick = async () => {
+  const p = S.policies.find(x=>medKeyOf(x)===$('medPolicy').value);
+  if (!p) return tell('Load policies first.');
+  const m = readMedForm();
+  const filled = MED_FIELDS.filter(f=>f.k!=='name' && f.k!=='exampleBill' && m[f.k]!=null).length;
+  if (filled < 2) return tell('Fill in at least two details (for example room & board and annual limit) before adding the page.');
+  if (!await ask(`Add a medical card explainer page for ${pid(p)} (${m.name||p.plan||''}) to the end of the report?\n\nIt only explains what you filled in. Please check the figures against the policy contract.`)) return;
+  S.medCards[medKeyOf(p)] = m;
+  S.changeLog.push({when:new Date().toLocaleString('en-MY'), policy:pid(p), field:'Medical card explainer', from:'-', to:'added / updated'});
+  renderChangeLog(); renderMed(); $('medSaved').textContent = 'Saved. It appears at the end of the report.';
+  if (S.generated) generate({quiet:true});
+};
+
+// Online (claude.ai) only: Claude reads a benefit schedule or pasted text and fills the form for checking
+let medCtl = null;
+async function initMedAi(){
+  if (!window.claude?.use) return;
+  const sample = await claude.use('sample'); if (!sample) return;
+  const lim = await sample.limits().catch(()=>null);
+  $('medAi').hidden = false;
+  if (!lim?.images){ $('medImg').hidden = true; }
+}
+initMedAi();
+$('btnMedAi').onclick = async () => {
+  const sample = await claude.use('sample');
+  const files = [...$('medImg').files], text = $('medText').value.trim();
+  if (!files.length && !text) return tell('Choose a screenshot or paste some text first.');
+  medCtl = new AbortController(); $('btnMedAi').disabled = true; $('btnMedStop').hidden = false;
+  $('medAiMsg').textContent = 'Claude is reading… usually 20–60 seconds.';
+  const keys = MED_FIELDS.filter(f=>f.k!=='exampleBill').map(f=>`- "${f.k}": ${f.en}${f.t==='num'?' (number only)':f.t==='sel'?' (one of: '+f.opts.filter(Boolean).join(', ')+')':''}`).join('\n');
+  const prompt = `Read this Malaysian medical card / hospital & surgical rider information (benefit schedule, brochure or contract) and extract the key terms.
+Rules: copy figures exactly as stated; never guess or calculate — use null when a term is not stated. Amounts in RM as plain numbers. "lifetimeLimit" may be a number or "No limit". Keep text answers short (under 20 words) and in plain English. Do not include personal details (IC, names, addresses).
+Reply with only JSON: {${MED_FIELDS.filter(f=>f.k!=='exampleBill').map(f=>`"${f.k}": ...`).join(', ')}, "unsure": ["<field key>: <why>"]}
+Fields:
+${keys}
+${text ? '\nText:\n' + text.slice(0, 20000) : ''}`;
+  try {
+    const out = await sample.json(prompt, {images: files.length ? files : undefined, signal: medCtl.signal});
+    const fill = {...readMedForm()};
+    MED_FIELDS.forEach(f=>{ if (out[f.k]!=null && out[f.k]!=='') fill[f.k] = f.t==='num' ? (+String(out[f.k]).replace(/[^\d.]/g,'') || '') : String(out[f.k]); });
+    loadMedForm(fill);
+    const unsure = Array.isArray(out.unsure) ? out.unsure.map(String) : [];
+    $('medAiMsg').textContent = 'Filled from what Claude read — please check every figure against the contract before saving.' + (unsure.length ? ' Unsure: ' + unsure.join('; ') : '');
+  } catch(e){
+    $('medAiMsg').textContent = e?.code==='cancelled' ? 'Stopped.' : `Could not read it (${e?.code||e}). Try a clearer screenshot or paste the text.`;
+  } finally { $('btnMedAi').disabled = false; $('btnMedStop').hidden = true; }
+};
+$('btnMedStop').onclick = () => medCtl?.abort();
+
+// The explainer page (same facts as the form; generic process steps; illustration clearly labelled)
+function medPage(key, m){
+  const p = S.policies.find(x=>medKeyOf(x)===key) || {};
+  const li = (en, zh) => `<li>${en}<span class="zh">${zh}</span></li>`;
+  const tiles = [
+    ['Room & board / day', '房租/天', m.roomBoard!=null ? fmtRM(m.roomBoard) : null],
+    ['Annual limit', '年度限额', m.annualLimit!=null ? fmtRM(m.annualLimit) : null],
+    ['Lifetime limit', '终身限额', m.lifetimeLimit!=null ? (isNaN(+m.lifetimeLimit) ? esc(m.lifetimeLimit) : fmtRM(+m.lifetimeLimit)) : null],
+    ['Deductible', '自付额', m.deductible!=null ? fmtRM(m.deductible) : null],
+    ['Co-payment', '共同付款', m.coins!=null ? `${m.coins}%` : null],
+  ].filter(t=>t[2]!=null);
+  const pts = [];
+  if (m.roomBoard!=null) pts.push(li(`<b>Room:</b> up to ${fmtRM(m.roomBoard)} per day. If you choose a more expensive room, you pay the difference, and some plans also reduce other claims in proportion — check your contract.`,
+    `房租：每天最高 ${fmtRM(m.roomBoard)}。选更贵的房间要自付差价，有些计划还会按比例减少其他赔偿，请以合约为准。`));
+  if (m.annualLimit!=null) pts.push(li(`<b>Yearly cap:</b> the plan pays up to ${fmtRM(m.annualLimit)} of eligible medical bills each policy year.`, `年度限额：每个保单年度最高赔 ${fmtRM(m.annualLimit)} 合格医药费。`));
+  if (m.lifetimeLimit!=null) pts.push(isNaN(+m.lifetimeLimit) && /no/i.test(m.lifetimeLimit)
+    ? li('<b>Lifetime:</b> no lifetime limit — the yearly cap resets every policy year.', '终身限额：没有终身限额，年度限额每年重新计算。')
+    : li(`<b>Lifetime cap:</b> ${isNaN(+m.lifetimeLimit)?esc(m.lifetimeLimit):fmtRM(+m.lifetimeLimit)} in total over the life of the plan.`, `终身限额：整个保障期间合计 ${isNaN(+m.lifetimeLimit)?esc(m.lifetimeLimit):fmtRM(+m.lifetimeLimit)}。`));
+  if (m.deductible!=null) pts.push(li(`<b>Deductible:</b> you pay the first ${fmtRM(m.deductible)} of eligible bills ${m.deductibleBasis ? m.deductibleBasis : '(check whether per year or per admission)'} before the plan pays.`,
+    `自付额：${m.deductibleBasis==='per policy year'?'每个保单年度':m.deductibleBasis==='per admission'?'每次住院':m.deductibleBasis==='per disability'?'每种病症':'(请确认按年或按次)'}先自付 ${fmtRM(m.deductible)}，之后才由保险赔。`));
+  if (m.coins!=null) pts.push(li(`<b>Co-payment:</b> you pay ${m.coins}% of the covered bill${m.coinsCap!=null?`, up to ${fmtRM(m.coinsCap)} a year`:''}. The plan pays the rest.`,
+    `共同付款：账单的 ${m.coins}% 由你支付${m.coinsCap!=null?`，每年最多 ${fmtRM(m.coinsCap)}`:''}，其余由保险支付。`));
+  if (m.preHosp!=null || m.postHosp!=null) pts.push(li(`<b>Before & after the stay:</b> doctor visits, tests and medicine ${m.preHosp!=null?`up to ${m.preHosp} days before`:''}${m.preHosp!=null&&m.postHosp!=null?' and ':''}${m.postHosp!=null?`up to ${m.postHosp} days after`:''} a hospital stay, for the same condition.`,
+    `住院前后：同一病症${m.preHosp!=null?`住院前 ${m.preHosp} 天`:''}${m.preHosp!=null&&m.postHosp!=null?'及':''}${m.postHosp!=null?`出院后 ${m.postHosp} 天`:''}的门诊、检验和药物。`));
+  if (m.icu) pts.push(li(`<b>Intensive care:</b> ${esc(m.icu)}.`, `加护病房：${esc(m.icu)}。`));
+  if (m.outpatient) pts.push(li(`<b>Outpatient cancer / dialysis:</b> ${esc(m.outpatient)}.`, `门诊癌症 / 洗肾：${esc(m.outpatient)}。`));
+  if (m.hospIncome!=null) pts.push(li(`<b>Cash while in hospital:</b> you also receive ${fmtRM(m.hospIncome)} per day.`, `住院现金：每天另外得到 ${fmtRM(m.hospIncome)}。`));
+  const steps = m.cashless==='Yes' ? [
+    ['Go to a <b>panel hospital</b> and show your medical card and IC.', '到 Panel 医院，出示医药卡和身份证。'],
+    ['The hospital asks the insurer for a <b>Guarantee Letter (GL)</b>.', '医院向保险公司申请 Guarantee Letter (GL)。'],
+    [`When you leave, you pay only ${[m.deductible!=null?'the deductible':'', m.coins!=null?'your co-payment':''].filter(Boolean).join(' and ') || 'items not covered'} — the plan settles the rest with the hospital.`, `出院时只付${[m.deductible!=null?'自付额':'', m.coins!=null?'共同付款':''].filter(Boolean).join('及') || '不保的项目'}，其余由保险直接与医院结算。`],
+    ['At a non-panel hospital: pay first, then claim with the original bills (check the claim deadline).', '非 Panel 医院：先自付，再拿原始单据申请 (注意申请期限)。'],
+  ] : m.cashless==='No' ? [
+    ['Pay the hospital bill first and keep all original bills and reports.', '先付医院账单，保留所有原始单据和报告。'],
+    ['Submit the claim to the insurer (check the claim deadline).', '向保险公司提交索赔 (注意申请期限)。'],
+  ] : [];
+  const good = [];
+  if (m.waiting) good.push(li(`<b>Waiting period:</b> ${esc(m.waiting)}. Illnesses that start during this period are not covered.`, `等待期：${esc(m.waiting)}。在等待期内发生的疾病不受保。`));
+  if (m.endAge!=null) good.push(li(`<b>Cover until age:</b> ${m.endAge}.`, `保障至：${m.endAge} 岁。`));
+  if (m.notCovered) good.push(li(`<b>Not covered:</b> ${esc(m.notCovered)}.`, `不保项目：${esc(m.notCovered)}。`));
+  if (m.notes) good.push(li(`<b>Also:</b> ${esc(m.notes)}.`, `其他：${esc(m.notes)}。`));
+  // Illustration: whole bill eligible, within room & board, one admission
+  let ex = '';
+  if (m.exampleBill && (m.deductible!=null || m.coins!=null || m.annualLimit!=null)){
+    const B = m.exampleBill, ded = Math.min(m.deductible||0, B), rest = B - ded;
+    const co = Math.min(rest * (m.coins||0)/100, m.coinsCap ?? Infinity);
+    const plan = Math.min(rest - co, m.annualLimit ?? Infinity), you = B - plan;
+    ex = `<div class="sec"><h3>Example</h3><span class="zh">举例 (仅供参考)</span></div>
+      <div class="med-ex"><div>Hospital bill 医院账单<b>${fmtRM(B)}</b></div><div>You pay 你付<b>${fmtRM(you)}</b></div><div>Plan pays 保险付<b>${fmtRM(plan)}</b></div></div>
+      <p class="muted" style="font-size:10.5px;margin:4px 0 0">Illustration only: assumes the whole bill is eligible, within the room & board limit, for one admission. Actual claims follow the policy contract. 仅供参考，实际以合约为准。</p>`;
+  }
+  return `<div class="page med-page">
+    <div class="sec" style="margin-top:0"><h3>Your medical card explained</h3><span class="zh">医药卡白话说明</span></div>
+    <div class="muted" style="font-size:12px;margin:-2px 0 8px">${esc(m.name||p.plan||'')} · ${esc(p.insurer||'')} · policy ${esc(pid(p))}</div>
+    ${tiles.length ? `<div class="tiles" style="grid-template-columns:repeat(${Math.min(tiles.length,5)},1fr)">${tiles.map(t=>`<div class="tile"><div class="k">${t[0]} ${t[1]}</div><div class="v" style="font-size:17px">${t[2]}</div></div>`).join('')}</div>` : ''}
+    ${steps.length ? `<div class="sec"><h3>When you are admitted</h3><span class="zh">住院时怎么运作</span></div>
+      <div class="cov"><ol class="med-steps">${steps.map(([e,z])=>`<li>${e} <span class="zh" style="color:var(--ink-2)">${z}</span></li>`).join('')}</ol></div>` : ''}
+    ${pts.length ? `<div class="sec"><h3>In plain words</h3><span class="zh">白话说明</span></div><div class="discuss" style="border-left-color:var(--purple)"><ul style="margin:0;padding-left:18px">${pts.join('')}</ul></div>` : ''}
+    ${ex}
+    ${good.length ? `<div class="sec"><h3>Good to know</h3><span class="zh">注意事项</span></div><div class="discuss"><ul style="margin:0;padding-left:18px">${good.join('')}</ul></div>` : ''}
+    <div class="disclaimer">This page explains the key terms in simple language for discussion. Benefits, limits, exclusions and claim procedures are governed by the policy contract. <span class="zh">本页以简单语言说明重点，所有保障、限额、除外条款及索赔程序以保单合约为准。</span></div>${'${foot}'}</div>`;
 }
 
 /* ================= Step 5: summary + report ================= */
@@ -1214,7 +1413,9 @@ function generate(opts){
   }).join('');
 
   // D and I want the gaps right after the dashboard; S and C read what they have first
-  const order = (style==='D' || style==='I') ? [page1, discussPage, cardPages, appxPages] : [page1, cardPages, discussPage, appxPages];
+  const medPages = Object.entries(S.medCards).filter(([k])=>S.policies.some(p=>medKeyOf(p)===k))
+    .map(([k,m])=>medPage(k, m).replace('${foot}', foot('%%PG%%'))).join('');
+  const order = (style==='D' || style==='I') ? [page1, discussPage, cardPages, appxPages, medPages] : [page1, cardPages, discussPage, appxPages, medPages];
   let pg = 0;
   $('report').innerHTML = order.join('').replace(/%%PG%%/g, () => ++pg);
   $('report').className = 'report-stage' + (style ? ' style-'+style : '');
@@ -1330,6 +1531,10 @@ async function styledXlsx(){
   discussPoints(sm, c.disc||'').forEach(d=>line('', d.en.replace(/<[^>]+>/g,'') + '\n' + d.zh));
   r++; line('DATA CHECKS', 'Finding 发现', 'Level', 'Policy', 'Resolution');
   S.issues.forEach(i=>line('', i.msg, i.level, i.p ? pid(i.p) : 'Client', i.level==='warn' ? 'Reviewed & acknowledged' : i.level==='info' ? 'FYI' : ''));
+  Object.entries(S.medCards).forEach(([k,m])=>{
+    r++; line('MEDICAL CARD', `${k} · ${m.name||''}`);
+    MED_FIELDS.filter(f=>f.k!=='name' && m[f.k]!=null).forEach(f=>line('', `${f.en} ${f.zh}`, String(m[f.k])));
+  });
   r++; line('CHANGE LOG', 'Change 修改', 'When', 'Policy', 'From → To');
   S.changeLog.forEach(l=>line('', l.field, l.when, l.policy, `${l.from} → ${l.to}`));
 

@@ -19,8 +19,9 @@ Everything runs in your browser. Excel files you load are read on your own devic
 3. **Client details** — name, age, review date, EPF / PRS balances, review standards (fixed RM or × annual income) and report style (Standard / DISC D · I · S · C).
 4. **Add a policy** (optional) — e.g. a policy from another insurer.
 5. **Insurer & purpose** — pick from the Malaysian life / family takaful list and a purpose for each policy.
-6. **Data check** — fix anything marked *Must fix*, review warnings. Nothing is changed without your confirmation.
-7. **Generate** the dashboard, then **Save PDF report** and **Download Excel**.
+6. **Medical card explainer** (optional) — fill in a medical rider's key terms (room & board, limits, deductible, co-payment, waiting period…) and the report gets an extra page that explains them in plain English and Chinese, with a worked example.
+7. **Data check** — fix anything marked *Must fix*, review warnings. Nothing is changed without your confirmation.
+8. **Generate** the dashboard, then **Save PDF report** and **Download Excel**.
 
 Review standards are planning benchmarks chosen by the adviser, not official figures. Benefits are always governed by each policy contract.
 

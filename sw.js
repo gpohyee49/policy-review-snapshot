@@ -1,4 +1,4 @@
-const CACHE = 'policy-review-2026-10-30f';
+const CACHE = 'policy-review-2026-10-30g';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192-report.png', 'icons/icon-512-report.png', 'icons/apple-touch-icon-report.png',
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
