@@ -14,6 +14,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.worksheet.datavalidation import DataValidation
 
 OUT = Path(__file__).resolve().parent.parent / "Policy_Review_Template.xlsx"
+
 # Blank copy for advisers to fill in (no sample rows); the app embeds this one for its download button
 OUT_BLANK = Path(__file__).resolve().parent.parent / "Policy_Review_Template_blank.xlsx"
 
@@ -36,7 +37,11 @@ POLICY_COLS = [
     ("Room & Board (RM/day)", 13), ("Personal Accident (RM)", 14),
     ("Waiver of Premium", 11), ("Nominee Name", 22), ("Nominee Relationship", 14),
     ("Nomination Type", 14), ("Purpose", 30), ("Notes", 28), ("Retirement Fund (RM)", 15),
+    ("Trust Created", 12),
 ]
+# Annual-premium helper column sits right after the input columns
+from openpyxl.utils import get_column_letter
+HELPER = get_column_letter(len(POLICY_COLS) + 1)
 TYPES = "Whole Life,Term Life,Investment-Linked,Medical,Critical Illness,Personal Accident,Endowment / Savings,Other"
 STATUSES = "Inforce,Lapsed,Paid-up,Surrendered,Matured"
 MODES = "Monthly,Quarterly,Half-yearly,Yearly,Single"
@@ -200,6 +205,7 @@ def build_policies(wb, blank=False):
     dv("K", MODES)
     dv("S", "Yes,No")
     dv("V", NOMTYPES)
+    dv("Z", "Yes,No,Not sure")
     # Purpose: suggested list, but any other text is allowed (no error popup)
     pur = DataValidation(type="list", formula1=f'"{PURPOSES}"', allow_blank=True, showErrorMessage=False)
     ws.add_data_validation(pur)
@@ -269,7 +275,7 @@ def build_dashboard(wb):
     ws["A14"] = "Premium  保费"
     ws["A14"].font = Font(bold=True, size=12, color=PINK)
     prem = [
-        ("Total annual premium (inforce + paid-up)  年缴总保费", f"={SUM('Z')}"),
+        ("Total annual premium (inforce + paid-up)  年缴总保费", f"={SUM(HELPER)}"),
         ("Monthly equivalent  每月相当于", "=B15/12"),
         ("% of annual income  占年收入", "=IF(Client!B6>0,B15/Client!B6,0)"),
         ("Premium budget  保费预算", "=Client!B18"),
