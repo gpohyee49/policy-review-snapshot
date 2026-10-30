@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT.parent / "policy-review-app"
-VERSION = "2026-10-30d"          # bump to make installed apps pick up a new version
+VERSION = "2026-10-30e"          # bump to make installed apps pick up a new version
 
 OUT.mkdir(exist_ok=True)
 (OUT / "icons").mkdir(exist_ok=True)
@@ -20,8 +20,8 @@ html = (ROOT / "Policy Review Snapshot.html").read_text(encoding="utf-8")
 head_add = """<link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#6B3FA0">
 <meta name="description" content="Turn a client's policy list into a bilingual coverage dashboard and keepsake PDF for annual reviews.">
-<link rel="icon" href="icons/icon-192.png">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192-report.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-report.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Policy Review">
 """
@@ -50,16 +50,16 @@ html = html.replace("</body>", sw_reg)
   "background_color": "#F7F3FB",
   "theme_color": "#6B3FA0",
   "icons": [
-    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-    {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+    {"src": "icons/icon-192-report.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-512-report.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-maskable-512-report.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
   ]
 }
 """, encoding="utf-8")
 
 # ---- service worker: app shell + CDN libraries, cache first, refreshed in the background
 (OUT / "sw.js").write_text(f"""const CACHE = 'policy-review-{VERSION}';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192-report.png', 'icons/icon-512-report.png', 'icons/apple-touch-icon-report.png',
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'];
@@ -84,10 +84,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from icons import draw_icon
 icon = lambda size, pad=0.0: draw_icon("report", size, pad)
 
-icon(192).save(OUT / "icons" / "icon-192.png")
-icon(180).save(OUT / "icons" / "apple-touch-icon.png")
-icon(512).save(OUT / "icons" / "icon-512.png")
-icon(512, pad=0.08).save(OUT / "icons" / "icon-maskable-512.png")
+# icon files carry the design name: a new design = new URLs, so installed apps pick it up
+for old in (OUT / "icons").glob("*.png"):
+    old.unlink()
+icon(192).save(OUT / "icons" / "icon-192-report.png")
+icon(180).save(OUT / "icons" / "apple-touch-icon-report.png")
+icon(512).save(OUT / "icons" / "icon-512-report.png")
+icon(512, pad=0.08).save(OUT / "icons" / "icon-maskable-512-report.png")
 
 # ---- supporting files (no client data)
 shutil.copy(ROOT / "Policy_Review_Template.xlsx", OUT / "Policy_Review_Template.xlsx")
