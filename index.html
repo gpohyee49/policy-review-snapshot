@@ -213,6 +213,21 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
   .page:last-child{break-after:auto}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+
+/* Tabs: one section at a time instead of one long page */
+.tabs{position:sticky;top:0;z-index:20;display:flex;gap:4px;overflow-x:auto;padding:8px 0;margin:0 0 4px;background:var(--bg,#FFFBF5);scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 12px;border-radius:999px;border:1px solid var(--line,#ddd);background:#fff;font:inherit;font-size:13px;line-height:1.15;cursor:pointer;white-space:nowrap}
+.tabs button small{font-size:11px;opacity:.75}
+.tabs button[aria-selected="true"]{background:var(--accent,#7b4bb7);border-color:var(--accent,#7b4bb7);color:#fff}
+.tabs button:disabled{opacity:.4;cursor:default}
+.tabs .badge{display:inline-block;min-width:16px;padding:0 4px;margin-left:3px;border-radius:8px;background:#e8a33d;color:#fff;font-size:10px}
+.tab-off{display:none !important}
+.tabbed .card h2 .step{display:none}
+.tab-nav{display:flex;justify-content:space-between;gap:8px;margin:6px 0 14px}
+.tab-nav button{min-width:110px}
+.drive-list{width:100%;max-width:420px}
+@media print{ #report.tab-off{display:block !important} .tabs,.tab-nav{display:none !important} }
 </style>
 </head>
 <body>
@@ -242,7 +257,8 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
   <div id="iosTip" class="ios-tip" hidden>To install on iPhone: tap <b>Share</b> <span aria-hidden="true">⎋</span> then <b>Add to Home Screen</b>. 安装到 iPhone：点<b>分享</b>，再选<b>添加到主屏幕</b>。 <button id="iosTipClose" aria-label="Close">✕</button></div>
 </div>
 
-<div class="wrap">
+<div class="wrap tabbed">
+  <nav class="tabs no-print" id="tabs" role="tablist" aria-label="Sections"></nav>
   <!-- STEP 1 -->
   <div class="card no-print" id="stepLoad">
     <h2><span class="step">1</span>Load policy data <span class="zh">载入保单资料</span></h2>
@@ -254,6 +270,17 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
       <span id="srcName" class="muted"></span>
     </div>
     <p class="muted" style="margin:8px 0 0">Accepts <b>Policy_Review_Template.xlsx</b>, your own policy summary, or an ePartner export (.xlsx / .csv). Excel files are read inside your browser only.</p>
+    <div class="shot-box" id="driveBox" hidden>
+      <div class="row"><b>Google Drive client 从 Google Drive 选客户</b>
+        <button id="btnDriveList">Load my client list 载入客户名单</button>
+        <a id="driveMaster" target="_blank" rel="noopener" hidden>Open master list 打开总表 ↗</a></div>
+      <div class="row" id="drivePick" hidden style="margin-top:6px">
+        <input id="driveSearch" class="drive-list" list="driveClients" placeholder="Type or pick a client 输入或选择客户" autocomplete="off">
+        <button class="primary" id="btnDriveLoad">Load latest review 载入最新检视</button>
+        <a id="driveFolder" target="_blank" rel="noopener" hidden>Open folder ↗</a></div>
+      <datalist id="driveClients"></datalist>
+      <div id="driveMsg" class="muted" style="margin-top:6px">Reads your "Client Policy Review" folder. Nothing is changed until you choose Save to Drive.</div>
+    </div>
     <div class="shot-box" id="shotBox">
       <div class="row">
         <b>Or use screenshots <span class="zh">或上传截图</span></b>
@@ -342,11 +369,14 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
       <button class="primary" id="btnGen">Generate dashboard &amp; report</button>
       <button id="btnPdf" disabled>Save PDF report</button>
       <button id="btnXlsx" disabled>Download Excel</button>
+      <button id="btnDriveSave" disabled hidden>Save to Drive 存到 Drive…</button>
+      <button id="btnMasterRefresh" hidden>Update master list 更新总表…</button>
       <span id="genHint" class="muted"></span>
     </div>
   </div>
 
   <div class="report-stage" id="report"></div>
+  <div class="tab-nav no-print" id="tabNav"><button id="tabPrev">← Back 上一步</button><button class="primary" id="tabNext">Next 下一步 →</button></div>
 </div>
 <div id="tip"></div>
 <datalist id="insurerList"></datalist>
@@ -554,8 +584,9 @@ $('btnReset').onclick = async () => {
   if (!await ask('Clear everything on screen and start a new client? (Your Excel file is not touched.)')) return;
   resetState(); $('srcName').textContent = ''; $('fileIn').value = ''; $('shotIn').value = ''; renderThumbs();
   ['stepMap','stepClient','stepAdd','stepPurpose','stepMed','stepCheck','stepGen'].forEach(id=>$(id).classList.add('hidden'));
+  goTab('load');
 };
-function resetState(){ Object.assign(S,{source:'',headers:[],rows:[],rowNos:[],defaults:{},mapping:{},policies:[],issues:[],changeLog:[],client:{},added:[],medCards:{},mapOpen:false,generated:false,isSample:false,shots:[],shotInfo:null}); $('report').innerHTML=''; renderAdded(); }
+function resetState(){ Object.assign(S,{source:'',headers:[],rows:[],rowNos:[],defaults:{},mapping:{},policies:[],issues:[],changeLog:[],client:{},added:[],medCards:{},mapOpen:false,generated:false,isSample:false,shots:[],shotInfo:null,drive:null}); $('report').innerHTML=''; renderAdded(); }
 
 function loadWorkbook(wb, name){
   resetState();
@@ -606,7 +637,7 @@ function afterLoad(){
   autoMap(); renderMap(); renderClient(); renderThumbs();
   ['stepMap','stepClient'].forEach(id=>$(id).classList.remove('hidden'));
   ['stepAdd','stepPurpose','stepMed','stepCheck','stepGen'].forEach(id=>$(id).classList.add('hidden'));
-  $('stepMap').scrollIntoView({behavior:'smooth'});
+  goTab('client');
 }
 
 
@@ -730,7 +761,7 @@ $('btnMap').onclick = async () => {
   if (!FIELDS.some(f=>f.cov && S.mapping[f.key]>=0)){ tell('Please match at least one coverage column (Death, TPD, CI, Medical, etc.) — otherwise there is nothing to summarise.'); return; }
   buildPolicies(); runChecks(); renderPurposes(); renderMed();
   ['stepAdd','stepPurpose','stepMed','stepCheck','stepGen'].forEach(id=>$(id).classList.remove('hidden')); renderAddForm();
-  $('stepCheck').scrollIntoView({behavior:'smooth'});
+  goTab('policies');
 };
 
 /* ================= Step 3: client form ================= */
@@ -900,6 +931,7 @@ function renderChangeLog(){
 }
 $('ackWarn').onchange = updateGenState;
 function updateGenState(){
+  if (typeof renderTabs==='function') setTimeout(renderTabs);
   const e = S.issues.some(i=>i.level==='error'), w = S.issues.some(i=>i.level==='warn');
   const ok = !e && (!w || $('ackWarn').checked);
   $('btnGen').disabled = !ok;
@@ -1534,8 +1566,8 @@ function generate(opts){
   $('report').innerHTML = order.join('').replace(/%%PG%%/g, () => ++pg);
   $('report').className = 'report-stage' + (style ? ' style-'+style : '');
   fitReport();
-  S.generated = true; S.summary = sm; updateGenState();
-  if (opts?.quiet !== true) $('report').scrollIntoView({behavior:'smooth'});
+  S.generated = true; S.summary = sm; updateGenState(); updateDriveButtons();
+  if (opts?.quiet !== true) goTab('report');
 }
 $('btnGen').onclick = () => generate();
 
@@ -1559,6 +1591,7 @@ async function saveFile(filename, blob){
 async function buildPdf(){
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({unit:'mm', format:'a4', compress:true});
+  goTab('report');
   const pages = [...document.querySelectorAll('#report .page')];
   document.body.classList.add('pdf-export'); $('report').style.zoom = '';
   try {
@@ -1691,6 +1724,236 @@ async function plainXlsx(){
   await saveFile(fileBase()+'.xlsx', new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
 };
 
+
+
+/* ================= Tabs: one section at a time ================= */
+const TABS = [
+  {id:'load',     en:'Load',     zh:'载入',   cards:['stepLoad']},
+  {id:'client',   en:'Client',   zh:'客户',   cards:['stepMap','stepClient']},
+  {id:'policies', en:'Policies', zh:'保单',   cards:['stepAdd','stepPurpose']},
+  {id:'med',      en:'Medical',  zh:'医药卡', cards:['stepMed']},
+  {id:'check',    en:'Check',    zh:'检查',   cards:['stepCheck']},
+  {id:'report',   en:'Report',   zh:'报告',   cards:['stepGen','report']},
+];
+let curTab = 'load';
+const tabOpen = t => t.cards.some(id => id!=='report' && !$(id).classList.contains('hidden'));
+function renderTabs(){
+  const open = TABS.filter(tabOpen);
+  if (!open.some(t=>t.id===curTab)) curTab = open.length ? open[open.length-1].id : 'load';
+  const warn = (S.issues||[]).filter(i=>i.level==='error' || i.level==='warn').length;
+  $('tabs').innerHTML = TABS.map((t,i)=>`<button role="tab" data-tab="${t.id}" aria-selected="${t.id===curTab}" ${tabOpen(t)?'':'disabled'}>
+    <span>${i+1}. ${t.en}${t.id==='check' && warn && tabOpen(t) ? `<span class="badge">${warn}</span>` : ''}</span><small>${t.zh}</small></button>`).join('');
+  TABS.forEach(t => t.cards.forEach(id => $(id).classList.toggle('tab-off', t.id!==curTab)));
+  const i = open.findIndex(t=>t.id===curTab);
+  $('tabPrev').hidden = i <= 0;
+  $('tabNext').hidden = i < 0 || i >= open.length-1;
+  $('tabNav').hidden = $('tabPrev').hidden && $('tabNext').hidden;
+}
+function goTab(id){
+  if (curTab === id) { renderTabs(); return; }
+  curTab = id; renderTabs();
+  if (id==='report' && S.generated) fitReport();
+  $('tabs').scrollIntoView({block:'start'});
+  document.querySelector(`#tabs [data-tab="${id}"]`)?.scrollIntoView({inline:'nearest', block:'nearest'});
+}
+$('tabs').onclick = e => { const b = e.target.closest('button[data-tab]'); if (b && !b.disabled) goTab(b.dataset.tab); };
+const stepTab = d => { const open = TABS.filter(tabOpen), i = open.findIndex(t=>t.id===curTab); if (open[i+d]) goTab(open[i+d].id); };
+$('tabPrev').onclick = () => stepTab(-1);
+$('tabNext').onclick = () => stepTab(1);
+// steps appear/disappear by toggling .hidden all over the app; keep the tab bar in step with them
+const tabObs = new MutationObserver(() => renderTabs());
+TABS.forEach(t => t.cards.forEach(id => tabObs.observe($(id), {attributes:true, attributeFilter:['class']})));
+renderTabs();
+
+/* ================= Google Drive (claude.ai version only, through the viewer's own Google Drive connector) =================
+   Folder layout: "Client Policy Review" / <letter> / <CLIENT NAME> / review files.
+   Reading is free; every change (upload, moving old files to trash, new master list) is confirmed first. */
+const GD = 'Google Drive', ROOT_NAME = 'Client Policy Review', MASTER_NAME = 'Client Master List 客户总表';
+const MIME = {folder:'application/vnd.google-apps.folder', xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pdf:'application/pdf', sheet:'application/vnd.google-apps.spreadsheet'};
+const DRV = {mcp:null, root:null, letters:[], clients:[], master:null, fileArgs:false};
+const qs = v => `'${String(v).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}'`;
+const normName = n => String(n||'').toUpperCase().replace(/\s+/g,' ').trim();
+function driveErr(e){
+  const c = e?.code;
+  if (c==='needs_reauth') return 'Google Drive needs to be reconnected: claude.ai → Settings → Connectors.';
+  if (c==='server_not_connected' || c==='selection_required') return 'Google Drive is not connected for this page. Add it in claude.ai → Settings → Connectors.';
+  if (c==='not_in_manifest' || c==='approval_required' || c==='consent_required') return 'Google Drive access was not allowed for this page. Use the page\'s Permissions menu to allow it, then try again.';
+  if (c==='server_unavailable' || c==='upstream_error') return 'Google Drive did not answer just now. Please try again in a moment.';
+  if (c==='tool_error') return 'Google Drive refused the request: ' + (e.message||'').slice(0,200);
+  return 'Google Drive error' + (c ? ` (${c})` : '') + ': ' + (e?.message||e);
+}
+async function gd(tool, input){ const r = await DRV.mcp.callTool(GD, tool, input, {cache:false}); return r; }
+async function gdSearch(query){
+  const out = [], seen = new Set(); let pageToken;
+  for (let n=0; n<20; n++){
+    const r = await gd('search_files', {query, pageSize:100, excludeContentSnippets:true, ...(pageToken?{pageToken}:{})});
+    const pl = r.payload || {};
+    (pl.files||[]).forEach(f => { if (!seen.has(f.id) && !f.trashed){ seen.add(f.id); out.push(f); } });
+    pageToken = pl.nextPageToken; if (!pageToken || !(pl.files||[]).length) break;
+  }
+  return out;
+}
+// download_file_content: the base64 may come back as a resource block, a blob field or in the payload
+function findB64(r){
+  const cands = [];
+  const walk = (v, d) => {
+    if (d > 6 || v == null) return;
+    if (typeof v === 'string'){ if (v.length > 200 && /^[A-Za-z0-9+/=\s]+$/.test(v.slice(0,400))) cands.push(v); return; }
+    if (typeof v === 'object') for (const k of Object.keys(v)) walk(v[k], d+1);
+  };
+  walk(r?.content, 0); walk(r?.structuredContent, 0); walk(r?.payload, 0);
+  return cands.sort((a,b)=>b.length-a.length)[0] || null;
+}
+const b64ToBytes = b64 => { const bin = atob(b64.replace(/\s+/g,'')), u = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; };
+const blobToB64 = blob => new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1]); fr.onerror = no; fr.readAsDataURL(blob); });
+const dateInTitle = t => (String(t).match(/(\d{4}-\d{2}-\d{2})/)||[])[1] || null;
+const newestFirst = (a,b) => (dateInTitle(b.title)||b.modifiedTime||'').localeCompare(dateInTitle(a.title)||a.modifiedTime||'') || String(b.modifiedTime).localeCompare(String(a.modifiedTime));
+
+async function initDrive(){
+  if (!window.claude?.use) return;
+  const mcp = await claude.use('mcp'); if (!mcp) return;
+  DRV.mcp = mcp; $('driveBox').hidden = false; $('btnDriveSave').hidden = false; $('btnMasterRefresh').hidden = false;
+  try { DRV.fileArgs = !!(await mcp.listTools()).fileArgs; } catch(e){}
+}
+async function driveClientList(){
+  const msg = $('driveMsg');
+  $('btnDriveList').disabled = true; msg.textContent = 'Reading your client folders…';
+  try {
+    const roots = (await gdSearch(`title = ${qs(ROOT_NAME)} and mimeType = ${qs(MIME.folder)}`)).filter(f=>!f.trashed);
+    if (!roots.length){ msg.textContent = `No folder named "${ROOT_NAME}" found in your Google Drive.`; return; }
+    DRV.root = roots.find(f=>f.owner && f.parentId) || roots[0];
+    DRV.letters = await gdSearch(`parentId = ${qs(DRV.root.id)} and mimeType = ${qs(MIME.folder)}`);
+    DRV.clients = [];
+    for (let i=0; i<DRV.letters.length; i+=15){            // a few letter folders per search keeps the query short
+      const q = DRV.letters.slice(i, i+15).map(l=>`parentId = ${qs(l.id)}`).join(' or ');
+      DRV.clients.push(...await gdSearch(`(${q}) and mimeType = ${qs(MIME.folder)}`));
+    }
+    DRV.clients.sort((a,b)=>a.title.localeCompare(b.title));
+    $('driveClients').innerHTML = DRV.clients.map(c=>`<option value="${esc(c.title)}"></option>`).join('');
+    const ms = await gdSearch(`parentId = ${qs(DRV.root.id)} and title = ${qs(MASTER_NAME)} and mimeType = ${qs(MIME.sheet)}`);
+    DRV.master = ms.sort((a,b)=>String(b.modifiedTime).localeCompare(String(a.modifiedTime)))[0] || null;
+    $('driveMaster').hidden = !DRV.master; if (DRV.master) $('driveMaster').href = DRV.master.viewUrl;
+    $('drivePick').hidden = false;
+    msg.textContent = `${DRV.clients.length} clients found. Pick one and load the latest review.`;
+    $('btnDriveList').textContent = 'Refresh list 刷新';
+  } catch(e){ msg.textContent = driveErr(e); }
+  finally { $('btnDriveList').disabled = false; }
+}
+$('btnDriveList').onclick = driveClientList;
+const findClient = name => DRV.clients.find(c=>normName(c.title)===normName(name));
+$('driveSearch').oninput = () => { const c = findClient($('driveSearch').value); $('driveFolder').hidden = !c; if (c) $('driveFolder').href = c.viewUrl || `https://drive.google.com/drive/folders/${c.id}`; };
+$('btnDriveLoad').onclick = async () => {
+  const msg = $('driveMsg'), c = findClient($('driveSearch').value);
+  if (!c) return tell('Pick a client from the list first (type part of the name, then choose).');
+  if (S.policies.length && !S.isSample && !await ask(`Replace the data currently on screen with ${c.title}'s latest review from Google Drive?`)) return;
+  $('btnDriveLoad').disabled = true; msg.textContent = `Looking in ${c.title}'s folder…`;
+  try {
+    const files = (await gdSearch(`parentId = ${qs(c.id)}`)).filter(f=>f.mimeType===MIME.xlsx || /\.xlsx$/i.test(f.title)).sort(newestFirst);
+    if (!files.length){ msg.textContent = `No Excel review file in ${c.title}'s folder yet. Load a file or screenshots instead — Save to Drive will put the new review there.`;
+      resetState(); S.client = {name:c.title}; S.drive = {folder:c, file:null}; return; }
+    const f = files[0]; msg.textContent = `Downloading ${f.title}…`;
+    const r = await gd('download_file_content', {fileId:f.id});
+    const b64 = findB64(r); if (!b64) throw {code:'tool_error', message:'the file came back empty'};
+    const wb = XLSX.read(b64ToBytes(b64), {type:'array', cellDates:true});
+    loadWorkbook(wb, f.title);
+    S.drive = {folder:c, file:f};
+    $('fileIn').value = '';
+    msg.innerHTML = `Loaded <b>${esc(f.title)}</b> from Drive${files.length>1?` (newest of ${files.length} Excel files)`:''}. Add any new or other-insurer policies under <b>Policies</b>; Save to Drive then updates this review.`;
+  } catch(e){ msg.textContent = driveErr(e); }
+  finally { $('btnDriveLoad').disabled = false; }
+};
+
+function updateDriveButtons(){ $('btnDriveSave').disabled = !S.generated; }
+async function ensureClientFolder(name){
+  if (S.drive?.folder && normName(S.drive.folder.title)===normName(name)) return S.drive.folder;
+  if (!DRV.root) await driveClientList();
+  if (!DRV.root) return null;
+  const hit = findClient(name); if (hit) return hit;
+  const letter = normName(name).replace(/^[^A-Z]+/,'')[0] || '#';
+  if (!await ask(`There is no folder for "${normName(name)}" in "${ROOT_NAME}". Create it under "${letter}"?`, 'Create folder')) return null;
+  let lf = DRV.letters.find(l=>normName(l.title)===letter);
+  if (!lf){ lf = (await gd('create_file', {title:letter, contentMimeType:MIME.folder, parentId:DRV.root.id})).payload; DRV.letters.push(lf); }
+  const cf = (await gd('create_file', {title:normName(name), contentMimeType:MIME.folder, parentId:lf.id})).payload;
+  DRV.clients.push(cf); DRV.clients.sort((a,b)=>a.title.localeCompare(b.title));
+  return cf;
+}
+async function upload(title, blob, mime, parentId){
+  const input = {title, contentMimeType:mime, parentId, disableConversionToGoogleType:true};
+  if (DRV.fileArgs) input.base64Content = {$file:{data:blob, name:title.replace(/[\\/:*?"<>|]/g,'_'), type:mime}};
+  else if (blob.size < 700*1024) input.base64Content = await blobToB64(blob);
+  else throw {code:'too_big', message:`${title} is too large to send from this view (${Math.round(blob.size/1024)} KB). Use Save PDF and upload it to Drive yourself.`};
+  return (await gd('create_file', input)).payload;
+}
+$('btnDriveSave').onclick = async () => {
+  if (!S.generated) return;
+  const name = S.client.name; if (!name) return tell('Fill in the client name (Client tab) first.');
+  const hint = $('genHint'); $('btnDriveSave').disabled = true;
+  try {
+    const folder = await ensureClientFolder(name); if (!folder) return;
+    const base = fileBase(), xTitle = base + '.xlsx', pTitle = base + '.pdf';
+    const inFolder = await gdSearch(`parentId = ${qs(folder.id)}`);
+    const oldX = inFolder.filter(f=>f.mimeType===MIME.xlsx || /\.xlsx$/i.test(f.title));
+    const samePdf = inFolder.filter(f=>f.title===pTitle);
+    const added = S.policies.filter(p=>p._manual).length;
+    if (!await ask(`Save to Google Drive → ${ROOT_NAME} / ${folder.title}:\n\n• ${pTitle}\n• ${xTitle}${added?`\n  (includes ${added} policy(ies) you added in the app)`:''}\n\nBefore saving, please double-check the client name, figures and nominees.`, 'Save to Drive')) return;
+    if (!window.jspdf || !window.html2canvas || !window.JSZip) return tell('The PDF / Excel tools could not load — please check your internet connection and reopen this page.');
+    const xBlob = await styledXlsx();
+    const pBlob = await buildPdf();
+    hint.textContent = 'Uploading Excel…';  const xf = await upload(xTitle, xBlob, MIME.xlsx, folder.id);
+    hint.textContent = 'Uploading PDF…';    const pf = await upload(pTitle, pBlob, MIME.pdf, folder.id);
+    const old = [...oldX, ...samePdf].filter(f=>f.id!==xf?.id && f.id!==pf?.id);
+    let trashed = 0;
+    if (old.length && await ask(`Saved. This folder still has the previous file(s):\n\n${old.map(f=>'• '+f.title).join('\n')}\n\nMove them to Google Drive trash so the new review replaces them? (You can restore from trash for 30 days.)`, 'Move to trash', 'Keep them')){
+      for (const f of old){ await gd('trash_file', {fileId:f.id}); trashed++; }
+    }
+    S.drive = {folder, file:xf};
+    hint.innerHTML = `Saved to Drive: <a href="${esc(pf?.viewUrl||'#')}" target="_blank" rel="noopener">PDF</a> · <a href="${esc(xf?.viewUrl||'#')}" target="_blank" rel="noopener">Excel</a>${trashed?` · ${trashed} old file(s) moved to trash`:''}`;
+    if (await ask('Update the Client Master List now so it links to this new review?', 'Update master list', 'Later')) await refreshMaster(true);
+  } catch(e){ hint.textContent = ''; tell(e?.code==='too_big' ? e.message : driveErr(e) + '\n\nIf the upload may have gone through, check the client\'s folder before saving again.'); }
+  finally { updateDriveButtons(); }
+};
+
+/* Master list: one row per client folder with links to the newest review Excel / PDF.
+   The Drive connector cannot edit a Sheet in place, so a fresh sheet replaces the old one (old one → trash, notes kept). */
+async function refreshMaster(confirmed){
+  const hint = $('genHint');
+  if (!DRV.root) await driveClientList();
+  if (!DRV.root) return;
+  if (!confirmed && !await ask(`Rebuild "${MASTER_NAME}" in ${ROOT_NAME}? A new sheet is made from your folders and the old one is moved to trash (notes in the Notes column are kept). The sheet's link will change — open it from this app or the folder.`, 'Rebuild')) return;
+  hint.textContent = 'Reading review files…';
+  const files = await gdSearch(`title contains 'Policy' and (mimeType = ${qs(MIME.xlsx)} or mimeType = ${qs(MIME.pdf)})`);
+  const by = {}; files.forEach(f => (by[f.parentId] = by[f.parentId] || []).push(f));
+  const notes = {};
+  if (DRV.master){
+    try {
+      const r = await gd('download_file_content', {fileId:DRV.master.id, exportMimeType:'text/csv'});
+      const b64 = findB64(r); const csv = b64 ? new TextDecoder().decode(b64ToBytes(b64)) : (typeof r.payload==='string' ? r.payload : '');
+      const rows = XLSX.read(csv, {type:'string'}); const aoa = XLSX.utils.sheet_to_json(rows.Sheets[rows.SheetNames[0]], {header:1, defval:''});
+      const h = aoa[0]||[], ni = h.findIndex(x=>/^notes/i.test(x)), ci = h.findIndex(x=>/^client/i.test(x));
+      if (ni>=0 && ci>=0) aoa.slice(1).forEach(r=>{ if (r[ni]) notes[normName(r[ci])] = r[ni]; });
+    } catch(e){ console.warn('could not read old master notes', e); }
+  }
+  const cell = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : String(v);
+  const link = (url, label) => url ? `=HYPERLINK("${url}","${label}")` : '';
+  const lines = [['No','Client 客户','Folder 文件夹','Review Excel 检视表','Report PDF 报告','Last review 上次检视','Next review 下次检视','Notes 备注']];
+  DRV.clients.forEach((c, i) => {
+    const fs = (by[c.id]||[]).sort(newestFirst);
+    const x = fs.find(f=>f.mimeType===MIME.xlsx), pdf = fs.find(f=>f.mimeType===MIME.pdf);
+    const last = dateInTitle(x?.title) || dateInTitle(pdf?.title) || (x?.modifiedTime||'').slice(0,10);
+    const r = i + 2;
+    lines.push([i+1, c.title, link(`https://drive.google.com/drive/folders/${c.id}`,'Open folder'),
+      link(x && `https://drive.google.com/file/d/${x.id}/view`, 'Open Excel'), link(pdf && `https://drive.google.com/file/d/${pdf.id}/view`, 'Open PDF'),
+      last, `=IF(F${r}="","",EDATE(F${r},12))`, notes[normName(c.title)] || '']);
+  });
+  hint.textContent = 'Writing master list…';
+  const created = (await gd('create_file', {title:MASTER_NAME, parentId:DRV.root.id, contentMimeType:'text/csv', textContent:lines.map(l=>l.map(cell).join(',')).join('\n')})).payload;
+  if (DRV.master?.id && created?.id && created.id !== DRV.master.id) await gd('trash_file', {fileId:DRV.master.id});
+  DRV.master = created;
+  $('driveMaster').hidden = false; $('driveMaster').href = created.viewUrl;
+  hint.innerHTML = `Master list updated: <a href="${esc(created.viewUrl)}" target="_blank" rel="noopener">open ${esc(MASTER_NAME)}</a> (${DRV.clients.length} clients)`;
+}
+$('btnMasterRefresh').onclick = async () => { try { await refreshMaster(false); } catch(e){ $('genHint').textContent=''; tell(driveErr(e)); } };
+initDrive();
 
 /* ================= Phone friendly: fit the A4 preview to the screen, install as an app ================= */
 function fitReport(){
