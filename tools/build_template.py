@@ -37,7 +37,7 @@ POLICY_COLS = [
     ("Room & Board (RM/day)", 13), ("Personal Accident (RM)", 14),
     ("Waiver of Premium", 11), ("Nominee Name", 22), ("Nominee Relationship", 14),
     ("Nomination Type", 14), ("Purpose", 30), ("Notes", 28), ("Retirement Fund (RM)", 15),
-    ("Trust Created", 12),
+    ("Trust Created", 12), ("Nominee Share (%)", 14),
 ]
 # Annual-premium helper column sits right after the input columns
 from openpyxl.utils import get_column_letter
