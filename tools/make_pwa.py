@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT.parent / "policy-review-app"
-VERSION = "2026-10-30b"          # bump to make installed apps pick up a new version
+VERSION = "2026-10-30c"          # bump to make installed apps pick up a new version
 
 OUT.mkdir(exist_ok=True)
 (OUT / "icons").mkdir(exist_ok=True)
@@ -22,7 +22,7 @@ head_add = """<link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#6B3FA0">
 <meta name="description" content="Turn a client's policy list into a bilingual coverage dashboard and keepsake PDF for annual reviews.">
 <link rel="icon" href="icons/icon-192.png">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Policy Review">
 """
@@ -57,7 +57,7 @@ html = html.replace("</body>", sw_reg)
 
 # ---- service worker: app shell + CDN libraries, cache first, refreshed in the background
 (OUT / "sw.js").write_text(f"""const CACHE = 'policy-review-{VERSION}';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'];
@@ -96,6 +96,7 @@ def icon(size, pad=0.0):
     return img
 
 icon(192).save(OUT / "icons" / "icon-192.png")
+icon(180).save(OUT / "icons" / "apple-touch-icon.png")
 icon(512).save(OUT / "icons" / "icon-512.png")
 icon(512, pad=0.06).save(OUT / "icons" / "icon-maskable-512.png")
 

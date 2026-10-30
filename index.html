@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#6B3FA0">
 <meta name="description" content="Turn a client's policy list into a bilingual coverage dashboard and keepsake PDF for annual reviews.">
 <link rel="icon" href="icons/icon-192.png">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Policy Review">
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -38,6 +38,10 @@ input,select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-ra
 .app-bar p{margin:2px 0 0;opacity:.9;font-size:13px}
 .wrap{max-width:1100px;margin:0 auto;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 [hidden]{display:none!important}
+.bar-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.install{background:#fff;color:var(--purple);border:0;font-weight:700;padding:7px 14px;border-radius:999px}
+.ios-tip{margin-top:8px;background:rgba(255,255,255,.18);border-radius:8px;padding:8px 10px;font-size:12.5px}
+.ios-tip button{background:transparent;border:0;color:#fff;padding:0 4px;margin-left:4px}
 .modal-back{position:fixed;inset:0;background:rgba(43,34,56,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px}
 .modal{background:var(--paper);color:var(--ink);border-radius:12px;max-width:540px;width:100%;max-height:85vh;overflow:auto;padding:18px 20px;box-shadow:0 10px 40px rgba(43,34,56,.3)}
 .modal p{white-space:pre-line;margin:0 0 16px;line-height:1.55}
@@ -190,8 +194,12 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
 </head>
 <body>
 <div class="app-bar no-print">
-  <h1>Policy Review Snapshot <span class="zh">保单检视摘要</span></h1>
+  <div class="bar-top">
+    <h1>Policy Review Snapshot <span class="zh">保单检视摘要</span></h1>
+    <button id="btnInstall" class="install" hidden>＋ Install app 安装</button>
+  </div>
   <p>See a client's existing cover, premium, nominees and purpose on one page, then hand them a report to keep.</p>
+  <div id="iosTip" class="ios-tip" hidden>To install on iPhone: tap <b>Share</b> <span aria-hidden="true">⎋</span> then <b>Add to Home Screen</b>. 安装到 iPhone：点<b>分享</b>，再选<b>添加到主屏幕</b>。 <button id="iosTipClose" aria-label="Close">✕</button></div>
 </div>
 
 <div class="wrap">
@@ -1180,6 +1188,7 @@ function generate(opts){
   let pg = 0;
   $('report').innerHTML = order.join('').replace(/%%PG%%/g, () => ++pg);
   $('report').className = 'report-stage' + (style ? ' style-'+style : '');
+  fitReport();
   S.generated = true; S.summary = sm; updateGenState();
   if (opts?.quiet !== true) $('report').scrollIntoView({behavior:'smooth'});
 }
@@ -1206,7 +1215,7 @@ async function buildPdf(){
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({unit:'mm', format:'a4', compress:true});
   const pages = [...document.querySelectorAll('#report .page')];
-  document.body.classList.add('pdf-export');
+  document.body.classList.add('pdf-export'); $('report').style.zoom = '';
   try {
     for (let i=0;i<pages.length;i++){
       $('genHint').textContent = `Building PDF… page ${i+1} of ${pages.length}`;
@@ -1214,7 +1223,7 @@ async function buildPdf(){
       if (i) pdf.addPage();
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
     }
-  } finally { document.body.classList.remove('pdf-export'); }
+  } finally { document.body.classList.remove('pdf-export'); fitReport(); }
   return pdf.output('blob');
 }
 $('btnPdf').onclick = async () => {
@@ -1253,6 +1262,26 @@ $('btnXlsx').onclick = async () => {
   const buf = XLSX.write(wb, {bookType:'xlsx', type:'array'});
   await saveFile(fileBase()+'.xlsx', new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
 };
+
+
+/* ================= Phone friendly: fit the A4 preview to the screen, install as an app ================= */
+function fitReport(){
+  const w = $('report').parentElement.clientWidth, a4 = 794 + 4;          // 210mm at 96dpi
+  $('report').style.zoom = w < a4 ? String(Math.max(0.35, w / a4)) : '';
+}
+addEventListener('resize', () => { if (S.generated) fitReport(); });
+let installEvt = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('btnInstall').hidden = false; });
+$('btnInstall').onclick = async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice.catch(()=>null); installEvt = null; $('btnInstall').hidden = true; };
+addEventListener('appinstalled', () => { $('btnInstall').hidden = true; });
+(() => {
+  const installable = !!document.querySelector('link[rel="manifest"]');
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  let dismissed = false; try { dismissed = localStorage.getItem('iosTipClosed') === '1'; } catch(e) {}
+  if (installable && ios && !standalone && !dismissed) $('iosTip').hidden = false;
+  $('iosTipClose').onclick = () => { $('iosTip').hidden = true; try { localStorage.setItem('iosTipClosed','1'); } catch(e) {} };
+})();
 
 /* ================= Hover tooltip ================= */
 const tip = $('tip');
