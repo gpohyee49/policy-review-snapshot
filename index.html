@@ -1,0 +1,1291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Policy Review Snapshot</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#6B3FA0">
+<meta name="description" content="Turn a client's policy list into a bilingual coverage dashboard and keepsake PDF for annual reviews.">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Policy Review">
+<meta name="claude:viewport-fit-sides" content="cover">
+<!-- SheetJS reads/writes Excel. Needs internet the first time the page opens. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- html2canvas + jsPDF build the PDF report file (no print dialog needed). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --purple:#6B3FA0; --purple-2:#8A63C2; --pink:#D94F8C; --lilac:#F3ECFA; --lilac-2:#E6D9F5;
+  --cream:#FFFBF5; --paper:#FFFFFF; --bg:#F7F3FB;
+  --ink:#2B2238; --ink-2:#5E5270; --muted:#8C8299; --line:#E3D9EE;
+  --good:#1F7A5C; --good-bg:#E3F4EC; --warn:#9A5B00; --warn-bg:#FDF0D9; --bad:#B4232F; --bad-bg:#FCE4E6;
+  --track:#EEE7F6;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Segoe UI","Microsoft YaHei","PingFang SC","Noto Sans SC",system-ui,sans-serif;font-size:14px;line-height:1.45}
+.zh{font-family:"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink);padding:8px 14px}
+button.primary{background:linear-gradient(90deg,var(--purple),var(--pink));color:#fff;border:0;font-weight:600}
+button:disabled{opacity:.45;cursor:not-allowed}
+input,select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)}
+.app-bar{background:linear-gradient(90deg,var(--purple),var(--pink));color:#fff;padding-block:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.app-bar h1{margin:0;font-size:20px}
+.app-bar p{margin:2px 0 0;opacity:.9;font-size:13px}
+.wrap{max-width:1100px;margin:0 auto;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+[hidden]{display:none!important}
+.modal-back{position:fixed;inset:0;background:rgba(43,34,56,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px}
+.modal{background:var(--paper);color:var(--ink);border-radius:12px;max-width:540px;width:100%;max-height:85vh;overflow:auto;padding:18px 20px;box-shadow:0 10px 40px rgba(43,34,56,.3)}
+.modal p{white-space:pre-line;margin:0 0 16px;line-height:1.55}
+.modal .row{justify-content:flex-end}
+.shot-box{margin-top:12px;padding:12px;border:1px dashed var(--purple-2);border-radius:10px;background:var(--lilac)}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.thumbs img{height:90px;border:1px solid var(--line);border-radius:6px;cursor:zoom-in;background:#fff}
+.thumbs img.big{height:auto;max-width:100%;cursor:zoom-out}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.pdf-export .page{height:297mm;overflow:hidden;box-shadow:none;margin:0 auto}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.card h2{margin:0 0 10px;font-size:16px;color:var(--purple)}
+.step{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--purple);color:#fff;font-size:12px;margin-right:6px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.muted{color:var(--muted)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px 18px}
+.grid2 label{display:flex;flex-direction:column;font-size:12px;color:var(--ink-2);gap:3px}
+table.map,table.issues{width:100%;border-collapse:collapse;font-size:13px}
+table.map td,table.map th,table.issues td,table.issues th{border-bottom:1px solid var(--line);padding:6px;text-align:left;vertical-align:top}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.tag.error{background:var(--bad-bg);color:var(--bad)}
+.tag.warn{background:var(--warn-bg);color:var(--warn)}
+.tag.info{background:var(--lilac);color:var(--purple)}
+.tag.ok{background:var(--good-bg);color:var(--good)}
+.hidden{display:none!important}
+.notice{padding:10px 12px;border-radius:8px;background:var(--lilac);font-size:13px;margin:8px 0}
+.notice.bad{background:var(--bad-bg);color:var(--bad)}
+.notice.good{background:var(--good-bg);color:var(--good)}
+.scroll-x{overflow-x:auto}
+
+/* ---------- Report (A4) ---------- */
+.report-stage{overflow-x:auto;padding:4px 0}
+.page{width:210mm;min-height:297mm;margin:0 auto 18px;background:var(--cream);box-shadow:0 2px 14px rgba(60,30,90,.12);
+  padding:12mm 13mm;position:relative;display:flex;flex-direction:column}
+.hero{background:linear-gradient(110deg,var(--purple) 0%,var(--purple-2) 55%,var(--pink) 100%);color:#fff;border-radius:14px;padding:16px 18px;margin-bottom:14px}
+.hero .t1{font-size:22px;font-weight:700;letter-spacing:.2px}
+.hero .t2{font-size:14px;opacity:.95}
+.hero .meta{display:flex;flex-wrap:wrap;gap:4px 22px;margin-top:10px;font-size:12.5px}
+.hero .meta b{font-weight:600}
+.sec{margin:12px 0 6px;display:flex;align-items:baseline;gap:8px}
+.sec h3{margin:0;font-size:15px;color:var(--purple)}
+.sec span{font-size:12.5px;color:var(--ink-2)}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.tile .k{font-size:11.5px;color:var(--ink-2)}
+.tile .v{font-size:20px;font-weight:700;color:var(--ink);margin-top:2px;font-variant-numeric:tabular-nums}
+.tile .s{font-size:11px;color:var(--muted)}
+.cov{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.cov-row{display:grid;grid-template-columns:150px 1fr 150px 96px;gap:10px;align-items:center;padding:4px 0;border-bottom:1px dashed var(--line)}
+.cov-row:last-child{border-bottom:0}
+.cov-label{font-size:12.5px;font-weight:600}
+.cov-label .zh{display:block;font-weight:400;color:var(--ink-2);font-size:11.5px}
+.track{position:relative;height:14px;background:var(--track);border-radius:4px}
+.fill{position:absolute;left:0;top:0;bottom:0;background:var(--purple);border-radius:0 4px 4px 0}
+.target{position:absolute;top:-4px;bottom:-4px;width:0;border-left:2px dashed var(--ink)}
+.cov-val{font-size:12px;font-variant-numeric:tabular-nums;text-align:right}
+.cov-val small{display:block;color:var(--muted);font-size:11px}
+.legend{display:flex;gap:16px;font-size:11px;color:var(--ink-2);margin-top:6px}
+.legend i{display:inline-block;vertical-align:middle;margin-right:5px}
+.chip{font-size:10.5px;font-weight:600;padding:3px 7px;border-radius:999px;text-align:center;white-space:nowrap}
+.chip.good{background:var(--good-bg);color:var(--good)}
+.chip.warn{background:var(--warn-bg);color:var(--warn)}
+.chip.bad{background:var(--bad-bg);color:var(--bad)}
+.chip.na,.chip.unk,.chip.inc{background:var(--lilac);color:var(--ink-2)}
+.prem-total{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline;margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:12px;font-variant-numeric:tabular-nums}
+.prem-total .over{color:var(--bad)}
+.prem-row{display:grid;grid-template-columns:250px 1fr 90px;gap:10px;align-items:center;padding:1px 0;font-size:12px}
+.prem-row .track{height:12px}
+.pcards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:12px;break-inside:avoid}
+.pcard .top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.pcard .name{font-weight:700;font-size:13px}
+.pcard .sub{color:var(--muted);font-size:11px}
+.pcard .purpose{margin:6px 0;padding:5px 8px;background:var(--lilac);border-radius:6px}
+.pcard dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:4px 0 0}
+.pcard dt{color:var(--ink-2)}
+.pcard dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.pcard.excluded{opacity:.75;border-style:dashed}
+.discuss{background:#fff;border:1px solid var(--line);border-left:4px solid var(--pink);border-radius:10px;padding:8px 12px}
+.discuss li{margin:6px 0;font-size:12.5px}
+.discuss li .zh{display:block;color:var(--ink-2);font-size:12px}
+.disclaimer{margin-top:auto;padding-top:10px;font-size:10px;color:var(--muted);border-top:1px solid var(--line)}
+.foot{position:absolute;bottom:6mm;right:13mm;font-size:9.5px;color:var(--muted)}
+table.appx{width:100%;border-collapse:collapse;font-size:9.5px}
+table.appx th{background:var(--purple);color:#fff;font-weight:600;padding:5px 4px;text-align:left}
+table.appx td{padding:4px;border-bottom:1px solid var(--line);vertical-align:top}
+table.appx tr:nth-child(even) td{background:var(--lilac)}
+table.appx td.n{text-align:right;font-variant-numeric:tabular-nums}
+#tip{position:fixed;pointer-events:none;background:var(--ink);color:#fff;font-size:12px;padding:6px 9px;border-radius:6px;z-index:50;max-width:260px;display:none}
+
+
+/* ---------- Report themes by client style (DISC) ---------- */
+/* D: high contrast, bold numbers */
+#report.style-D{--purple:#43165F;--purple-2:#6A1F7A;--pink:#C2185B;--lilac:#F6EAF2;--cream:#FFFFFF;--line:#E4D3E2;--track:#F1E4EE}
+#report.style-D .hero{background:var(--purple);border-radius:6px}
+#report.style-D .tile{border-radius:6px;border-width:0 0 0 4px;border-color:var(--pink)}
+#report.style-D .tile .v{font-size:21px;white-space:nowrap}
+#report.style-D .cov,#report.style-D .pcard,#report.style-D .discuss{border-radius:6px}
+/* I: bright and warm, round shapes */
+#report.style-I{--purple:#9B3FAF;--purple-2:#D454A0;--pink:#FF7A6B;--lilac:#FFEAF2;--cream:#FFF8FA;--line:#F7D4E2;--track:#FCE3EC}
+#report.style-I .hero{border-radius:22px;background:linear-gradient(120deg,var(--purple),var(--purple-2) 50%,var(--pink))}
+#report.style-I .tile{border-radius:18px;background:var(--lilac);border-color:transparent}
+#report.style-I .cov,#report.style-I .discuss{border-radius:18px}
+#report.style-I .pcard{border-radius:18px;border-top:5px solid var(--pink)}
+#report.style-I .pcard:nth-child(3n+2){border-top-color:var(--purple-2)}
+#report.style-I .pcard:nth-child(3n){border-top-color:var(--purple)}
+#report.style-I .fill{border-radius:7px}
+/* S: soft and calm, more white space */
+#report.style-S{--purple:#6F64A0;--purple-2:#8C8FB8;--pink:#8FB5A3;--lilac:#F1F5F2;--cream:#FBFCFA;--line:#DDE5DF;--track:#E8EEEA}
+#report.style-S .hero{border-radius:16px;background:linear-gradient(110deg,var(--purple),var(--purple-2) 60%,var(--pink))}
+#report.style-S .tile,#report.style-S .cov,#report.style-S .pcard,#report.style-S .discuss{border-radius:16px}
+#report.style-S .tile{padding:12px 14px}
+#report.style-S .discuss li{margin:9px 0;line-height:1.55}
+/* C: precise and tabular, square corners, thin lines */
+#report.style-C{--purple:#2E3E5C;--purple-2:#3F5A82;--pink:#5B7DB1;--lilac:#EEF2F7;--cream:#FFFFFF;--line:#D3DAE4;--track:#E6EBF2}
+#report.style-C .hero{border-radius:2px;background:var(--purple)}
+#report.style-C .tile,#report.style-C .cov,#report.style-C .pcard,#report.style-C .discuss{border-radius:2px}
+#report.style-C .fill{border-radius:0}
+/* D: big gap tiles */
+.gap-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.gap-tile{background:#fff;border:1px solid var(--line);border-top:4px solid var(--pink);border-radius:6px;padding:10px 12px}
+.gap-tile .k{font-size:12px;font-weight:600}
+.gap-tile .k .zh{display:block;font-weight:400;color:var(--ink-2);font-size:11px}
+.gap-tile .v{font-size:26px;font-weight:800;color:var(--pink);font-variant-numeric:tabular-nums;margin:4px 0 2px}
+.gap-tile .s{font-size:11px;color:var(--muted)}
+/* C: coverage table */
+table.covt{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}
+table.covt th{text-align:left;font-weight:600;color:var(--ink-2);border-bottom:1.5px solid var(--purple);padding:5px 6px}
+table.covt td{border-bottom:1px solid var(--line);padding:6px;vertical-align:middle}
+table.covt td.n,table.covt th.n{text-align:right;white-space:nowrap}
+table.covt th{white-space:nowrap}
+table.covt td{padding:4px 6px}
+table.covt .mini{height:6px;background:var(--track);position:relative;min-width:70px}
+table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purple)}
+@media (max-width:720px){
+  .cov-row{grid-template-columns:1fr 1fr}
+  .tiles{grid-template-columns:1fr 1fr}
+}
+@page{size:A4;margin:0}
+@media print{
+  body{background:#fff}
+  .no-print,.app-bar{display:none!important}
+  .wrap{padding:0;max-width:none}
+  .report-stage{overflow:visible;padding:0}
+  .page{box-shadow:none;margin:0;break-after:page;width:210mm;min-height:297mm;height:297mm;overflow:hidden}
+  .page:last-child{break-after:auto}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div class="app-bar no-print">
+  <h1>Policy Review Snapshot <span class="zh">保单检视摘要</span></h1>
+  <p>See a client's existing cover, premium, nominees and purpose on one page, then hand them a report to keep.</p>
+</div>
+
+<div class="wrap">
+  <!-- STEP 1 -->
+  <div class="card no-print" id="stepLoad">
+    <h2><span class="step">1</span>Load policy data <span class="zh">载入保单资料</span></h2>
+    <div class="row">
+      <input type="file" id="fileIn" accept=".xlsx,.xls,.csv">
+      <button id="btnSample">Load sample client (fictional)</button>
+      <button id="btnReset">Start new client</button>
+      <span id="srcName" class="muted"></span>
+    </div>
+    <p class="muted" style="margin:8px 0 0">Accepts <b>Policy_Review_Template.xlsx</b>, your own policy summary, or an ePartner export (.xlsx / .csv). Excel files are read inside your browser only.</p>
+    <div class="shot-box" id="shotBox">
+      <div class="row">
+        <b>Or use screenshots <span class="zh">或上传截图</span></b>
+        <input type="file" id="shotIn" accept="image/png,image/jpeg,image/webp" multiple>
+        <button class="primary" id="btnShot" disabled>Read screenshots with Claude</button>
+        <button id="btnShotStop" hidden>Stop</button>
+      </div>
+      <div id="shotMsg" class="muted" style="margin-top:6px">Checking whether screenshot reading is available…</div>
+      <div id="shotThumbs" class="thumbs"></div>
+    </div>
+  </div>
+
+  <!-- MAPPING -->
+  <div class="card no-print hidden" id="stepMap">
+    <h2><span class="step">2</span>Confirm columns <span class="zh">确认栏位</span></h2>
+    <div id="mapSummary"></div>
+    <div id="mapDetail">
+      <p class="muted" style="margin-top:0">I matched your file's columns automatically. Please check — fields marked * are required. Choose "(not in file)" if the column doesn't exist; I will leave it blank, not guess.</p>
+      <div class="scroll-x"><table class="map" id="mapTable"></table></div>
+    </div>
+    <div class="row" style="margin-top:10px"><button class="primary" id="btnMap">Confirm columns &amp; check data</button></div>
+  </div>
+
+  <!-- CLIENT -->
+  <div class="card no-print hidden" id="stepClient">
+    <h2><span class="step">3</span>Client &amp; review standard <span class="zh">客户资料与检视标准</span></h2>
+    <div class="grid2" id="clientForm"></div>
+    <p class="muted" style="margin-bottom:0">For each standard, pick a fixed amount, a multiple of annual income (e.g. ×10 for Life, ×5 for CI), or <i>Custom amount</i>. Default: RM 1,000,000 for Life, CI, Retirement and Medical. It is <b>your planning benchmark</b>, not an official figure, and decides where the report shows "Review 可加强".</p>
+  </div>
+
+  <!-- ADD POLICY -->
+  <div class="card no-print hidden" id="stepAdd">
+    <h2><span class="step">4</span>Add a policy <span class="zh">新增保单（可选）</span></h2>
+    <p class="muted" style="margin-top:0">For policies the client holds that are not in this file — e.g. bought from another insurer, as long as you have the record. <span class="zh">客户在其他公司买的保单，只要你有记录，可以在这里加入。</span> Fields marked * are required. Leave unknown amounts blank.</p>
+    <div class="grid2" id="addForm"></div>
+    <div class="row" style="margin-top:10px"><button id="btnAdd">Add this policy…</button></div>
+    <div id="addedList"></div>
+  </div>
+
+  <!-- PURPOSES -->
+  <div class="card no-print hidden" id="stepPurpose">
+    <h2><span class="step">5</span>Insurer &amp; purpose <span class="zh">保险公司与保单目的</span></h2>
+    <p class="muted" style="margin-top:0">Pick the insurer (or type another name) and what each policy is for. Both show on each policy card. For purpose, choose <i>Other…</i> to type your own. <span class="zh">选择保险公司与每份保单的目的，会显示在保单卡片上。</span></p>
+    <div class="scroll-x"><table class="map" id="purposeTable"></table></div>
+  </div>
+
+  <!-- CHECKS -->
+  <div class="card no-print hidden" id="stepCheck">
+    <h2><span class="step">6</span>Data check <span class="zh">资料检查</span></h2>
+    <div id="checkSummary"></div>
+    <div class="scroll-x"><table class="issues" id="issueTable"></table></div>
+    <div class="row" style="margin-top:10px">
+      <button id="btnApply">Apply my fixes…</button>
+      <label class="row" style="gap:6px"><input type="checkbox" id="ackWarn"> I've reviewed the warnings — show blanks as "Not recorded 未记录"</label>
+    </div>
+    <div id="changeLogBox"></div>
+    <div id="checkThumbs" class="thumbs"></div>
+  </div>
+
+  <!-- GENERATE -->
+  <div class="card no-print hidden" id="stepGen">
+    <h2><span class="step">7</span>Dashboard &amp; client report <span class="zh">仪表板与客户报告</span></h2>
+    <div class="row">
+      <button class="primary" id="btnGen">Generate dashboard &amp; report</button>
+      <button id="btnPdf" disabled>Save PDF report</button>
+      <button id="btnXlsx" disabled>Download Excel</button>
+      <span id="genHint" class="muted"></span>
+    </div>
+  </div>
+
+  <div class="report-stage" id="report"></div>
+</div>
+<div id="tip"></div>
+<datalist id="insurerList"></datalist>
+<div id="modal" class="modal-back" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalMsg">
+    <p id="modalMsg"></p>
+    <div class="row"><button id="modalCancel">Cancel</button><button class="primary" id="modalOk">Confirm</button></div>
+  </div>
+</div>
+
+<script>
+/* ================= Field definitions ================= */
+const FIELDS = [
+  {key:'policyNo',  label:'Policy No', kind:'text', req:true, syn:['policyno','policynumber','polno','contractno','certificateno','certno']},
+  {key:'insurer',   label:'Insurer', kind:'text', syn:['insurer','company','insurancecompany']},
+  {key:'plan',      label:'Plan Name', kind:'text', syn:['planname','plan','productname','product','basicplan','planname1']},
+  {key:'type',      label:'Policy Type', kind:'text', syn:['policytype','producttype','type','category','plantype']},
+  {key:'lifeAssured',label:'Life Assured', kind:'text', syn:['lifeassured','lifeassuredname','insured','insuredname','lifeinsured']},
+  {key:'owner',     label:'Policy Owner', kind:'text', syn:['policyowner','owner','proposer','proposername','policyholder']},
+  {key:'status',    label:'Status', kind:'status', req:true, syn:['status','policystatus']},
+  {key:'start',     label:'Commencement Date', kind:'date', syn:['commencementdate','startdate','riskcommencementdate','issuedate','effectivedate','rcd','inceptiondate','commdate','commencement']},
+  {key:'expiry',    label:'Expiry Date', kind:'date', syn:['expirydate','maturitydate','enddate','coverageexpirydate','expiry','maturity']},
+  {key:'premium',   label:'Premium (RM)', kind:'num', req:true, syn:['premiumrm','premium','modalpremium','installmentpremium','instalmentpremium','totalpremium','premiumamount']},
+  {key:'mode',      label:'Payment Mode', kind:'mode', req:true, syn:['paymentmode','mode','premiummode','frequency','billingfrequency','paymentfrequency']},
+  {key:'death',     label:'Death (RM)', kind:'num', cov:true, syn:['deathrm','death','basicprotectiondeath','deathbenefit','sumassured','basicsumassured','sa']},
+  {key:'tpd',       label:'TPD (RM)', kind:'num', cov:true, syn:['tpdrm','tpd','tpdbenefit']},
+  {key:'ci',        label:'Critical Illness (RM)', kind:'num', cov:true, syn:['criticalillnessrm','criticalillness','ci','cisumassured','dreaddisease','diseasecibr','cibr']},
+  {key:'eci',       label:'Early CI (RM)', kind:'num', cov:true, syn:['earlycirm','earlyci','eci','earlystageci']},
+  {key:'medLimit',  label:'Medical Annual Limit (RM)', kind:'num', cov:true, syn:['medicalannuallimitrm','medicalannuallimit','annuallimit','medicallimit']},
+  {key:'roomBoard', label:'Room & Board (RM/day)', kind:'num', cov:true, syn:['roomboardrmday','roomboard','roomandboard','roomandboardrmday','rb','hossur']},
+  {key:'pa',        label:'Personal Accident (RM)', kind:'num', cov:true, syn:['personalaccidentrm','personalaccident','pa','accidentalbenefit','accident']},
+  {key:'waiver',    label:'Waiver of Premium', kind:'text', syn:['waiverofpremium','waiver','wop','wpremiun','wpremium']},
+  {key:'nominee',   label:'Nominee Name', kind:'text', syn:['nomineename','nominee','beneficiary','beneficiaryname','nominees']},
+  {key:'nomineeRel',label:'Nominee Relationship', kind:'text', syn:['nomineerelationship','relationship','relationshiptolifeassured']},
+  {key:'nomType',   label:'Nomination Type', kind:'text', syn:['nominationtype','nomtype']},
+  {key:'purpose',   label:'Purpose', kind:'text', syn:['purpose','policypurpose','objective','goal']},
+  {key:'notes',     label:'Notes', kind:'text', syn:['notes','remarks','remark','comment','comments']},
+  {key:'retire',    label:'Retirement Fund (RM)', kind:'num', cov:true, syn:['retirementfundrm','retirementfund','retirementrm','retirement','retire','retirementvalue']},
+];
+const FIELD = Object.fromEntries(FIELDS.map(f=>[f.key,f]));
+const MODE_FACTOR = {Monthly:12, Quarterly:4, 'Half-yearly':2, Yearly:1, Single:0};
+const STATUSES = ['Inforce','Paid-up','Lapsed','Surrendered','Matured','Terminated','Withdrawn'];
+const MODES = Object.keys(MODE_FACTOR);
+const PURPOSES = [
+  ['Family income protection','家庭收入保障'], ['Medical & hospital bills','医药住院费'], ['Critical illness recovery','重病治疗与康复'],
+  ['Retirement','退休规划'], ["Children's education",'子女教育基金'], ['Savings & wealth','储蓄与财富累积'],
+  ['Mortgage / loan protection','房贷 / 贷款保障'], ['Estate & legacy','遗产传承'], ['Accident cover','意外保障'], ['Business protection','生意保障'],
+].map(([en,zh])=>({en, zh, label:`${en} ${zh}`}));
+// Which option a purpose text matches (English or Chinese, case-insensitive); -1 = free text
+const purposeIdx = t => { const k = String(t||'').trim().toLowerCase(); return k ? PURPOSES.findIndex(o=>k===o.label.toLowerCase() || k.startsWith(o.en.toLowerCase()) || k===o.zh) : -2; };
+const INSURERS = [
+  ...['AIA','Allianz Life','AmMetLife','Etiqa Life','FWD Insurance','Generali Life','Great Eastern Life','Hong Leong Assurance','Manulife',
+      'MCIS','Prudential Assurance','Sun Life Malaysia','Tokio Marine Life','Zurich Life'].map(n=>[n,'Life insurer 人寿保险']),
+  ...['AIA PUBLIC Takaful','AmMetLife Takaful','Etiqa Family Takaful','FWD Takaful','Great Eastern Takaful','Hong Leong MSIG Takaful',
+      'Prudential BSN Takaful','Sun Life Malaysia Takaful','Takaful Malaysia (Keluarga)','Takaful Ikhlas Family','Zurich Takaful'].map(n=>[n,'Family takaful 家庭伊斯兰保险']),
+];
+const TYPES = ['Whole Life','Term Life','Investment-Linked','Medical','Critical Illness','Personal Accident','Endowment / Savings','Other'];
+
+const CLIENT_FIELDS = [
+  {key:'name', label:'Client name 客户姓名', type:'text', match:['clientname','name']},
+  {key:'age', label:'Age 年龄', type:'number', match:['age']},
+  {key:'income', label:'Annual income (RM) 年收入', type:'number', match:['annualincome','income']},
+  {key:'dependants', label:'No. of dependants 受扶养人数', type:'number', match:['noofdependant','noofdependent','dependant','dependent']},
+  {key:'reviewDate', label:'Review date 检视日期', type:'date', match:['reviewdate']},
+  {key:'preparedBy', label:'Prepared by 负责人', type:'text', match:['preparedby']},
+  {key:'disc', label:'Report style (DISC) 报告风格 — not shown on report', type:'text', match:['reportstyle','disc'], defSel:'',
+   presets:[['','Standard 标准'],['D','D · Bottom line first 重点先行'],['I','I · Story & people 故事与家人'],['S','S · Reassuring, step by step 安心、一步步'],['C','C · Detailed & method 详细与计算方式']]},
+  {key:'epf', label:'EPF / KWSP balance (RM)', type:'number', match:['epf','kwsp']},
+  {key:'prs', label:'PRS balance (RM)', type:'number', match:['prs']},
+  // Review standards: pick a fixed amount or a multiple of annual income (dropdown), or type a custom amount
+  {key:'gLife', label:'Life standard 身故标准', type:'number', match:['lifecovertarget','lifestandard'], defSel:'v:1000000',
+   presets:[['v:1000000','RM 1,000,000'],['v:500000','RM 500,000'],['x:5','×5 annual income'],['x:10','×10 annual income'],['x:15','×15 annual income'],['custom','Custom amount…']]},
+  {key:'gTpd', label:'TPD standard 残疾标准', type:'number', match:['tpdcovertarget','tpdstandard'], defSel:'none',
+   presets:[['none','No standard'],['same','Same as Life standard'],['v:1000000','RM 1,000,000'],['v:500000','RM 500,000'],['x:5','×5 annual income'],['x:10','×10 annual income'],['custom','Custom amount…']]},
+  {key:'gCi', label:'CI standard 严重疾病标准', type:'number', match:['cicovertarget','cistandard'], defSel:'v:1000000',
+   presets:[['v:1000000','RM 1,000,000'],['v:500000','RM 500,000'],['x:3','×3 annual income'],['x:5','×5 annual income'],['custom','Custom amount…']]},
+  {key:'gRet', label:'Retirement standard 退休标准', type:'number', match:['retirementtarget','retirementstandard'], defSel:'v:1000000',
+   presets:[['v:1000000','RM 1,000,000'],['v:500000','RM 500,000'],['v:2000000','RM 2,000,000'],['x:10','×10 annual income'],['x:20','×20 annual income'],['custom','Custom amount…']]},
+  {key:'gMed', label:'Medical annual limit standard 医药限额标准', type:'number', match:['medicalannuallimittarget','medicalstandard'], defSel:'v:1000000',
+   presets:[['v:1000000','RM 1,000,000'],['v:2000000','RM 2,000,000'],['v:3000000','RM 3,000,000'],['v:5000000','RM 5,000,000'],['custom','Custom amount…']]},
+  {key:'gRb', label:'Room & board standard 房租标准 (per day)', type:'number', match:['roomboardtarget'], defSel:'v:200',
+   presets:[['v:150','RM 150 / day'],['v:200','RM 200 / day'],['v:300','RM 300 / day'],['v:400','RM 400 / day'],['custom','Custom amount…']]},
+  {key:'gBudget', label:'Premium budget (% of income)', type:'number', match:['premiumbudget'], def:10},
+];
+
+/* Fictional, deliberately a little messy so the checks have something to show. */
+const SAMPLE = {
+  name:'sample-client (fictional)',
+  headers:FIELDS.map(f=>f.label),
+  rows:[
+    ['S-0001','Great Eastern Life','Whole Life Plan (sample)','Whole Life','TAN MEI LING','TAN MEI LING','Inforce','15/03/2015','15/03/2087','250','Monthly','200,000','200000','','','','','','Yes','LEE WEI MING','Husband','Hibah','Family income protection 家庭收入保障',''],
+    ['S-0002','Great Eastern Life','Medical Investment-Linked (sample)','Medical','TAN MEI LING','TAN MEI LING','In force','01/07/2018','01/07/2088','280','Monthly','50000','50000','','','150000','150','','No','','','','Medical & hospital bills 医药住院费',''],
+    ['S-0003','Other Insurer','Critical Illness Plan (sample)','Critical Illness','TAN MEI LING','TAN MEI LING','Inforce','10/01/2020','10/01/2060','RM 1,800.00','Yearly','100000','','100000','','','','','No','WONG SIEW LAN','Mother','Beneficiary','Critical illness recovery 重病治疗与康复',''],
+    ['S-0004','Other Insurer','Personal Accident (sample)','Personal Accident','TAN MEI LING','TAN MEI LING','Inforce','01/05/2023','01/05/2027','300','','','','','','','','100000','No','','','','Accident cover 意外保障','Yearly renewable'],
+    ['S-0005','Great Eastern Life','Education Endowment (sample)','Endowment / Savings','TAN MEI LING','TAN MEI LING','Lapsed','01/09/2012','01/09/2032','100','Monthly','30000','','','','','','','No','LEE JIA HUI','Daughter','Beneficiary',"Children's education 子女教育基金",'Lapsed 2021'],
+  ],
+  client:{name:'TAN MEI LING (SAMPLE)',age:38,income:96000,dependants:2,reviewDate:'2026-10-29',preparedBy:'Goh Poh Yee',epf:180000,prs:25000}
+};
+
+/* ================= State ================= */
+const S = {source:'', headers:[], rows:[], headerRowNo:1, mapping:{}, policies:[], issues:[], changeLog:[], client:{}, generated:false};
+const $ = id => document.getElementById(id);
+const nk = s => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g,'');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* In-page confirm / message dialogs: browser confirm() and alert() don't work inside claude.ai */
+let AUTO_YES = false;                  // test hooks only
+function openModal(msg, okText, cancelText){
+  return new Promise(res=>{
+    $('modalMsg').textContent = msg; $('modalOk').textContent = okText;
+    $('modalCancel').hidden = !cancelText; if (cancelText) $('modalCancel').textContent = cancelText;
+    $('modal').hidden = false; $('modalOk').focus();
+    const done = v => { $('modal').hidden = true; $('modalOk').onclick = $('modalCancel').onclick = document.onkeydown = null; res(v); };
+    $('modalOk').onclick = () => done(true);
+    $('modalCancel').onclick = () => done(false);
+    document.onkeydown = e => { if (e.key==='Escape') done(false); };
+  });
+}
+const ask = (msg, ok='Confirm', cancel='Cancel') => AUTO_YES ? Promise.resolve(true) : openModal(msg, ok, cancel);
+const tell = msg => AUTO_YES ? Promise.resolve(console.log(msg)) : openModal(msg, 'OK', null);
+
+/* ================= Parsing helpers (never guess) ================= */
+const isBlank = v => v===null || v===undefined || ['','-','–','n/a','na','nil'].includes(String(v).trim().toLowerCase());
+function parseNum(v){
+  if (isBlank(v)) return {val:null};
+  if (typeof v === 'number') return {val:v};
+  const cleaned = String(v).replace(/RM/ig,'').replace(/[,\s]/g,'');
+  if (/^-?\d+(\.\d+)?$/.test(cleaned)) return {val:+cleaned, cleaned: String(v).trim()!==cleaned};
+  return {val:null, invalid:true};
+}
+function parseDate(v){
+  if (isBlank(v)) return {val:null};
+  if (v instanceof Date && !isNaN(v)) { const d=new Date(v.getTime()+12*3600e3); return {val:new Date(d.getFullYear(),d.getMonth(),d.getDate())}; }
+  if (typeof v === 'number' && v>20000 && v<80000) { const d=new Date(Math.round((v-25569)*864e5)); return {val:new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())}; }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);           // dd/mm/yyyy (Malaysian order)
+  if (m) { const d=new Date(+m[3],+m[2]-1,+m[1]); if (d.getMonth()===+m[2]-1) return {val:d}; }
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);                            // yyyy-mm-dd
+  if (m) { const d=new Date(+m[1],+m[2]-1,+m[3]); if (d.getMonth()===+m[2]-1) return {val:d}; }
+  return {val:null, invalid:true};
+}
+function parseStatus(v){
+  const k = nk(v); if (!k) return {val:null};
+  // ePartner style: "Inforce (Regular)", "Inforce (Fully Paid)", "Lapsed (Normal Lapse)", "Terminated (Matured)", "waiting for validate (Withdrawn)"
+  if (/fullypaid|paidup|^rpu$/.test(k)) return {val:'Paid-up', cleaned:String(v)!=='Paid-up'};
+  if (['inforce','inforceregular','active','if','premiumpaying'].includes(k)) return {val:'Inforce', cleaned:String(v)!=='Inforce'};
+  if (k.startsWith('lapse')) return {val:'Lapsed', cleaned:String(v)!=='Lapsed'};
+  if (k.includes('surrender')) return {val:'Surrendered', cleaned:String(v)!=='Surrendered'};
+  if (k.includes('matur')) return {val:'Matured', cleaned:String(v)!=='Matured'};
+  if (k.includes('withdraw')) return {val:'Withdrawn', cleaned:String(v)!=='Withdrawn'};
+  if (k.startsWith('terminat')) return {val:'Terminated', cleaned:String(v)!=='Terminated'};
+  return {val:null, invalid:true};
+}
+function parseMode(v){
+  const k = nk(v); if (!k) return {val:null};
+  const map = {monthly:'Monthly',m:'Monthly','12':'Monthly',quarterly:'Quarterly',q:'Quarterly','4':'Quarterly',
+    halfyearly:'Half-yearly',semiannual:'Half-yearly',semiannually:'Half-yearly',h:'Half-yearly','2':'Half-yearly',
+    yearly:'Yearly',annual:'Yearly',annually:'Yearly',y:'Yearly',a:'Yearly','1':'Yearly',single:'Single',singlepremium:'Single'};
+  return map[k] ? {val:map[k], cleaned:String(v)!==map[k]} : {val:null, invalid:true};
+}
+const PARSERS = {num:parseNum, date:parseDate, status:parseStatus, mode:parseMode, text:v=>({val: isBlank(v) ? null : String(v).trim()})};
+
+const fmtRM = n => n==null ? '–' : 'RM ' + n.toLocaleString('en-MY',{maximumFractionDigits:2});
+const fmtShort = n => n==null ? '–' : n>=1e6 ? 'RM '+(n/1e6).toFixed(n%1e6?2:0).replace(/\.?0+$/,'')+'m' : n>=1e3 ? 'RM '+Math.round(n/1e3)+'k' : 'RM '+Math.round(n);
+const fmtDate = d => d ? `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}` : '–';
+const rawText = v => v instanceof Date ? fmtDate(parseDate(v).val) : String(v ?? '');
+
+/* ================= Step 1: load ================= */
+$('fileIn').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (S.policies.length && !S.isSample && !await ask('Replace the data currently loaded with "'+f.name+'"?')) { e.target.value=''; return; }
+  if (typeof XLSX === 'undefined') { tell('Excel reader could not load — please check your internet connection and reopen this page.'); return; }
+  try {
+    const wb = XLSX.read(await f.arrayBuffer(), {type:'array', cellDates:true});
+    loadWorkbook(wb, f.name);
+  } catch(err){ tell('Sorry, I could not read this file: '+err.message); }
+});
+$('btnSample').onclick = async () => {
+  if (S.policies.length && !S.isSample && !await ask('Replace the data currently loaded with the fictional sample?')) return;
+  resetState(); S.isSample = true;
+  S.source = SAMPLE.name; S.headers = SAMPLE.headers; S.rows = SAMPLE.rows; S.rowNos = SAMPLE.rows.map((_,i)=>i+2);
+  S.client = {...SAMPLE.client};
+  afterLoad();
+};
+$('btnReset').onclick = async () => {
+  if (!await ask('Clear everything on screen and start a new client? (Your Excel file is not touched.)')) return;
+  resetState(); $('srcName').textContent = ''; $('fileIn').value = ''; $('shotIn').value = ''; renderThumbs();
+  ['stepMap','stepClient','stepAdd','stepPurpose','stepCheck','stepGen'].forEach(id=>$(id).classList.add('hidden'));
+};
+function resetState(){ Object.assign(S,{source:'',headers:[],rows:[],rowNos:[],defaults:{},mapping:{},policies:[],issues:[],changeLog:[],client:{},added:[],mapOpen:false,generated:false,isSample:false,shots:[],shotInfo:null}); $('report').innerHTML=''; renderAdded(); }
+
+function loadWorkbook(wb, name){
+  resetState();
+  const polName = wb.SheetNames.find(n=>/polic/i.test(n)) || wb.SheetNames[0];
+  const aoa = XLSX.utils.sheet_to_json(wb.Sheets[polName], {header:1, defval:'', raw:true});
+  // Exports and hand-made summaries may have title rows on top, and some use 2 header rows (English + Chinese).
+  // Pick the row (or row pair) within the first 40 rows that matches the most known headers.
+  const score = cells => cells.filter(c => FIELDS.some(f => fieldMatches(f, c))).length;
+  const looksLikeData = r => r.some(c => c instanceof Date || (typeof c==='number' && c>1000));
+  let best = 0, bestScore = -1, two = false;
+  for (let i=0;i<Math.min(40,aoa.length);i++){
+    const one = score(aoa[i]);
+    const next = aoa[i+1];
+    const pair = next && !looksLikeData(next) ? score(aoa[i].map((c,j)=>`${c} ${next[j] ?? ''}`)) : -1;
+    if (Math.max(one,pair) > bestScore){ best=i; bestScore=Math.max(one,pair); two = pair>one; }
+  }
+  const hdr2 = two ? aoa[best+1] : [];
+  const width = Math.max(aoa[best].length, hdr2.length);
+  S.headers = Array.from({length:width}, (_,j)=>`${aoa[best][j] ?? ''} ${hdr2[j] ?? ''}`.replace(/\s+/g,' ').trim());
+  const first = best + (two ? 2 : 1);
+  S.rows = []; S.rowNos = [];
+  for (let i=first;i<aoa.length;i++){
+    const r = aoa[i];
+    if (!r.some(c => String(c).trim()!=='')) continue;
+    if (r.some(c => /\btotal\b/i.test(String(c)))) break;            // totals row: everything below is footer notes
+    S.rows.push(r); S.rowNos.push(i+1);
+  }
+  S.source = name + (wb.SheetNames.length>1 ? ` — sheet "${polName}"` : '');
+  const cl = wb.SheetNames.find(n=>/client/i.test(n));
+  if (cl){
+    XLSX.utils.sheet_to_json(wb.Sheets[cl], {header:1, defval:'', raw:true}).forEach(r=>{
+      const k = nk(r[0]);
+      const f = CLIENT_FIELDS.find(cf => cf.match.some(m => k.startsWith(m)));
+      if (f && r[1]!=='' && S.client[f.key]===undefined){
+        let v = r[1];
+        if (f.type==='date'){ const d=parseDate(v).val; v = d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : ''; }
+        if (f.key==='gBudget' && typeof v==='number' && v<1) v = +(v*100).toFixed(2);
+        S.client[f.key] = v;
+      }
+    });
+  }
+  if (!S.rows.length){ tell('No policy rows found in "'+polName+'".'); return; }
+  afterLoad();
+}
+
+function afterLoad(){
+  $('srcName').textContent = `Loaded: ${S.source} · ${S.rows.length} row(s)`;
+  autoMap(); renderMap(); renderClient(); renderThumbs();
+  ['stepMap','stepClient'].forEach(id=>$(id).classList.remove('hidden'));
+  ['stepAdd','stepPurpose','stepCheck','stepGen'].forEach(id=>$(id).classList.add('hidden'));
+  $('stepMap').scrollIntoView({behavior:'smooth'});
+}
+
+
+/* ================= Step 1b: read screenshots with Claude (online version on claude.ai only) ================= */
+let SAMPLE_FN = null, SHOT_MAX = 0, shotCtl = null;
+function renderThumbs(){
+  const html = (S.shots||[]).map(u=>`<img src="${u}" alt="Screenshot" title="Click to enlarge">`).join('');
+  ['shotThumbs','checkThumbs'].forEach(id=>{ $(id).innerHTML = html; $(id).querySelectorAll('img').forEach(im=>im.onclick=()=>im.classList.toggle('big')); });
+}
+(async () => {
+  const off = msg => { $('shotMsg').textContent = msg; $('btnShot').disabled = true; $('shotIn').disabled = true; };
+  if (!window.claude?.use) return off('Screenshot reading works when this app is opened online on claude.ai.');
+  const sample = await claude.use('sample');
+  const lim = sample ? await sample.limits().catch(()=>null) : null;
+  if (!lim?.images) return off('Screenshot reading is not available in this view. You can still load an Excel file.');
+  SAMPLE_FN = sample; SHOT_MAX = lim.images.maxCount;
+  $('shotIn').accept = lim.images.mediaTypes.join(',');
+  $('btnShot').disabled = false;
+  $('shotMsg').textContent = `Up to ${SHOT_MAX} screenshots, e.g. ePartner policy listing + policy detail pages, or a policy summary table. Screenshots are sent to Claude on your own account to be read.`;
+})();
+function shotPrompt(){
+  const keys = FIELDS.map(f=>`- "${f.key}": ${f.label}${f.kind==='num'?' (number in RM, no "RM", no commas)':f.kind==='date'?' (dd/mm/yyyy)':''}`).join('\n');
+  return `These screenshots show a Malaysian life-insurance client's policy records (for example an insurer agent portal such as Great Eastern ePartner, or an adviser's own policy summary table). Extract every policy you can see.
+
+Rules:
+- One object per policy number. If the same policy appears in several screenshots (e.g. a listing and its detail page), merge them into one object.
+- Copy values exactly as shown. Never guess, estimate or calculate a value that is not visible: use null.
+- status: copy the status text as shown (e.g. "Inforce (Regular)", "Lapsed (Normal Lapse)").
+- mode: Monthly, Quarterly, Half-yearly, Yearly or Single, as shown. premium: the amount per payment as shown (not annualised).
+- death: basic sum assured / death benefit. ci: critical illness sum assured (including CI riders). medLimit: medical card annual limit. roomBoard: hospital room & board per day. retire: only if a retirement or maturity value is shown.
+- If a figure could belong to more than one field, leave the field null and explain in "uncertain".
+- Never include IC/NRIC or passport numbers, phone numbers, addresses, or card / bank account numbers anywhere in the reply.
+
+Reply with only JSON in this shape:
+{"client":{"name":string|null,"age":number|null},"policies":[{"policyNo":"...", ...one key per field below..., "uncertain":[{"field":"<field key>","note":"<why>"}]}],"warnings":["<anything the adviser should double-check>"]}
+
+Field keys:
+${keys}`;
+}
+$('btnShot').onclick = async () => {
+  const files = [...$('shotIn').files];
+  if (!files.length) return tell('Choose at least one screenshot first.');
+  if (files.length > SHOT_MAX) return tell(`Please choose at most ${SHOT_MAX} screenshots at a time.`);
+  if (S.policies.length && !S.isSample && !await ask('Replace the data currently loaded with what Claude reads from these screenshots?')) return;
+  shotCtl = new AbortController();
+  $('btnShot').disabled = true; $('btnShotStop').hidden = false;
+  $('shotMsg').textContent = 'Claude is reading the screenshots… this usually takes 20–60 seconds.';
+  try {
+    const out = await SAMPLE_FN.json(shotPrompt(), {images: files, signal: shotCtl.signal, modelTier: 'default'});
+    const pols = Array.isArray(out?.policies) ? out.policies.filter(x=>x && typeof x==='object') : [];
+    if (!pols.length){ $('shotMsg').textContent = 'No policies found.'; return tell("Claude couldn't find any policies in these screenshots. Try clearer screenshots that show the policy numbers."); }
+    resetState();
+    S.shots = files.map(f=>URL.createObjectURL(f));
+    S.source = `${files.length} screenshot(s), read by Claude`;
+    S.headers = FIELDS.map(f=>f.label);
+    S.rows = pols.map(x=>FIELDS.map(f=> x[f.key]==null ? '' : x[f.key]));
+    S.rowNos = pols.map((_,i)=>i+1);
+    S.shotInfo = {warnings: (Array.isArray(out.warnings)?out.warnings:[]).map(String),
+      uncertain: Object.fromEntries(pols.map(x=>[String(x.policyNo ?? ''), Array.isArray(x.uncertain) ? x.uncertain.filter(u=>u&&u.field) : []]))};
+    if (out.client?.name) S.client.name = String(out.client.name);
+    if (out.client?.age) S.client.age = +out.client.age || '';
+    $('shotMsg').textContent = `Read ${pols.length} policies from ${files.length} screenshot(s). Please check them in the steps below.`;
+    afterLoad(); renderThumbs();
+  } catch(e){
+    const msg = {cancelled:'Stopped.', not_granted:'Claude was not allowed for this page, so screenshots cannot be read here.', sampling_disabled:'Claude is not available for this account.',
+      rate_limited:'Too many requests just now. Please try again in a few minutes.', image_rejected:'One of the images could not be used. Try a PNG or JPG screenshot.',
+      invalid_json:"Claude's reply could not be read. Please try again.", session_expired:'Please sign in to claude.ai again.'}[e?.code] || `Something went wrong (${e?.code||e}). Please try again.`;
+    $('shotMsg').textContent = msg;
+  } finally {
+    $('btnShot').disabled = !SAMPLE_FN; $('btnShotStop').hidden = true;
+  }
+};
+$('btnShotStop').onclick = () => shotCtl?.abort();
+
+/* ================= Step 2: column mapping ================= */
+function fieldMatches(f, h, exactOnly){
+  const k = nk(h); if (!k) return false;
+  if (k===nk(f.label) || f.syn.includes(k)) return true;
+  return !exactOnly && f.syn.some(sy => sy.length>=3 && k.endsWith(sy));
+}
+function autoMap(){
+  S.mapping = {};
+  const used = new Set();
+  for (const exact of [true,false]) FIELDS.forEach(f=>{
+    if (S.mapping[f.key]>=0) return;
+    const idx = S.headers.findIndex((h,i)=>!used.has(i) && fieldMatches(f, h, exact));
+    if (idx>=0){ S.mapping[f.key]=idx; used.add(idx); }
+  });
+}
+function renderMap(){
+  const opts = i => `<option value="-1">(not in file)</option>` + S.headers.map((h,j)=>`<option value="${j}" ${j===i?'selected':''}>${esc(h||'(blank header '+(j+1)+')')}</option>`).join('');
+  const example = i => i>=0 ? esc(rawText(S.rows.find(r=>String(r[i]).trim()!=='')?.[i] ?? '')) : '';
+  $('mapTable').innerHTML = `<tr><th>App field</th><th>Column in your file</th><th>Example value</th><th></th></tr>` +
+    FIELDS.map(f=>{
+      const i = S.mapping[f.key] ?? -1;
+      const list = f.kind==='status' ? STATUSES : f.kind==='mode' ? MODES : null;
+      const dflt = i<0 && list ? `<div style="margin-top:4px">or set ALL rows to: <select data-default="${f.key}"><option value="">— choose —</option>${list.map(o=>`<option ${S.defaults[f.key]===o?'selected':''}>${o}</option>`).join('')}</select></div>` : '';
+      const flag = i<0 ? (S.defaults[f.key] ? `<span class="tag warn">All rows = ${esc(S.defaults[f.key])}</span>` : f.req ? '<span class="tag error">Required — please choose</span>' : '<span class="tag info">Will be blank</span>') : '<span class="tag ok">Matched</span>';
+      return `<tr><td>${esc(f.label)}${f.req?' *':''}</td><td><select data-map="${f.key}">${opts(i)}</select>${dflt}</td><td class="muted">${example(i)}</td><td>${flag}</td></tr>`;
+    }).join('');
+  $('mapTable').querySelectorAll('select').forEach(sel=>sel.onchange=()=>{
+    const v=+sel.value; if (v<0) delete S.mapping[sel.dataset.map]; else S.mapping[sel.dataset.map]=v; renderMap();
+  });
+  $('mapTable').querySelectorAll('select[data-default]').forEach(sel=>sel.onchange=()=>{
+    if (sel.value) S.defaults[sel.dataset.default]=sel.value; else delete S.defaults[sel.dataset.default]; renderMap();
+  });
+  // Everything required matched? Show one line instead of the full table (still editable)
+  const allOk = FIELDS.every(f=>!f.req || S.mapping[f.key]>=0 || S.defaults[f.key]);
+  const n = Object.keys(S.mapping).length;
+  $('mapDetail').classList.toggle('hidden', allOk && !S.mapOpen);
+  $('mapSummary').innerHTML = allOk
+    ? `<div class="notice good">✅ ${n} columns matched automatically 已自动配对${Object.entries(S.defaults).filter(([k])=>!(S.mapping[k]>=0)).map(([k,v])=>` · <b>${esc(FIELD[k].label)}: all rows = ${esc(v)}</b>`).join('')} <button id="btnMapToggle" style="margin-left:8px;padding:3px 10px">${S.mapOpen?'Hide':'Show / edit'}</button></div>`
+    : `<div class="notice bad">Some required columns need your choice below. 有必填栏位需要你选择。</div>`;
+  if ($('btnMapToggle')) $('btnMapToggle').onclick = () => { S.mapOpen = !S.mapOpen; renderMap(); };
+}
+$('btnMap').onclick = async () => {
+  const missing = FIELDS.filter(f=>f.req && !(S.mapping[f.key]>=0) && !S.defaults[f.key]);
+  const defs = Object.entries(S.defaults).filter(([k])=>!(S.mapping[k]>=0));
+  if (defs.length && !await ask(`Your file has no column for:\n${defs.map(([k,v])=>`• ${FIELD[k].label} → I will set ALL ${S.rows.length} rows to "${v}"`).join('\n')}\n\nIs that correct for every policy in this file?`)) return;
+  if (missing.length && !await ask(`These required columns are not matched:\n• ${missing.map(f=>f.label).join('\n• ')}\n\nContinue anyway? Each policy will be flagged so you can fill the value in by hand.`)) return;
+  if (!FIELDS.some(f=>f.cov && S.mapping[f.key]>=0)){ tell('Please match at least one coverage column (Death, TPD, CI, Medical, etc.) — otherwise there is nothing to summarise.'); return; }
+  buildPolicies(); runChecks(); renderPurposes();
+  ['stepAdd','stepPurpose','stepCheck','stepGen'].forEach(id=>$(id).classList.remove('hidden')); renderAddForm();
+  $('stepCheck').scrollIntoView({behavior:'smooth'});
+};
+
+/* ================= Step 3: client form ================= */
+function stdSel(f){
+  // Which dropdown option a standard is on: kept choice, else the amount from the file, else the default
+  if (S.client[f.key+'Sel']) return S.client[f.key+'Sel'];
+  const v = S.client[f.key];
+  if (v===undefined || v==='' || v==null) return f.defSel;
+  return f.presets.some(([o])=>o==='v:'+(+v)) ? 'v:'+(+v) : 'custom';
+}
+function renderClient(){
+  $('clientForm').innerHTML = CLIENT_FIELDS.map(f=>{
+    if (f.presets){
+      if (f.key==='disc'){
+        const cur = S.client.disc ?? '';
+        return `<label>${esc(f.label)}<select data-disc id="std_disc">${f.presets.map(([o,l])=>`<option value="${o}" ${o===cur?'selected':''}>${esc(l)}</option>`).join('')}</select></label>`;
+      }
+      const sel = stdSel(f);
+      S.client[f.key+'Sel'] = sel;
+      if (sel.startsWith('v:')) S.client[f.key] = +sel.slice(2);
+      return `<label>${esc(f.label)}<select data-std="${f.key}" id="std_${f.key}">${f.presets.map(([o,l])=>`<option value="${o}" ${o===sel?'selected':''}>${esc(l)}</option>`).join('')}</select>
+        <input data-cl="${f.key}" id="cl_${f.key}" type="number" step="any" min="0" placeholder="Amount in RM" value="${esc(S.client[f.key] ?? '')}" ${sel==='custom'?'':'hidden'}></label>`;
+    }
+    const v = S.client[f.key] ?? f.def ?? '';
+    return `<label>${esc(f.label)}<input data-cl="${f.key}" id="cl_${f.key}" type="${f.type}" value="${esc(v)}" ${f.type==='number'?'step="any" min="0"':''}></label>`;
+  }).join('');
+  $('std_disc').onchange = () => { S.client.disc = $('std_disc').value; if (S.generated) generate({quiet:true}); };
+  $('clientForm').querySelectorAll('select[data-std]').forEach(sel=>sel.onchange=()=>{
+    const k = sel.dataset.std, v = sel.value, inp = $('cl_'+k);
+    S.client[k+'Sel'] = v;
+    if (v.startsWith('v:')) S.client[k] = +v.slice(2);
+    inp.hidden = v!=='custom'; if (v==='custom') inp.focus();
+    if (S.policies.length) runChecks();
+  });
+  $('clientForm').querySelectorAll('input').forEach(inp=>inp.oninput=()=>{
+    S.client[inp.dataset.cl] = inp.type==='number' ? (inp.value===''?'':+inp.value) : inp.value;
+    if (S.policies.length) runChecks();
+  });
+  CLIENT_FIELDS.forEach(f=>{ if (S.client[f.key]===undefined && f.def!==undefined) S.client[f.key]=f.def; });
+}
+
+/* ================= Step 4: build + checks ================= */
+function buildPolicies(){
+  const polIdx = S.mapping.policyNo;
+  const extras = [];
+  S.policies = [];
+  S.rows.forEach((r,i)=>{
+    // A line with no policy number right under a policy (e.g. "990K", "NO LIMIT", "HB 100/day") belongs to the policy above
+    if (polIdx>=0 && isBlank(r[polIdx]) && S.policies.length){
+      const prev = S.policies[S.policies.length-1];
+      const bits = r.map(rawText).map(x=>x.trim()).filter(x=>!isBlank(x));
+      if (bits.length){ prev._extra = (prev._extra||[]).concat(bits); extras.push({p:prev, row:S.rowNos[i], bits}); }
+      return;
+    }
+    const p = {_row: S.rowNos[i] ?? i+2, _raw:{}, _flag:{}};
+    FIELDS.forEach(f=>{
+      const idx = S.mapping[f.key];
+      const raw = idx>=0 ? r[idx] : (S.defaults[f.key] ?? '');
+      const res = PARSERS[f.kind](raw);
+      p[f.key] = res.val; p._raw[f.key] = rawText(raw);
+      p._flag[f.key] = res.invalid ? 'invalid' : res.cleaned ? 'cleaned' : null;
+    });
+    S.policies.push(p);
+  });
+  S.policies.forEach(p=>{ if (p._extra){ p.notes = [p.notes, 'Also listed: '+p._extra.join(' · ')].filter(Boolean).join(' | '); } });
+  S.extras = extras;
+  S.changeLog = Object.entries(S.defaults).filter(([k])=>!(S.mapping[k]>=0))
+    .map(([k,v])=>({when:new Date().toLocaleString('en-MY'), policy:'All rows', field:FIELD[k].label, from:'(no column in file)', to:v}));
+  S.added.forEach(a=>{ S.policies.push(makeManualPolicy(a.raw)); S.changeLog.push(a.log); });
+  S.generated = false; $('report').innerHTML='';
+}
+const pid = p => p.policyNo || `row ${p._row}`;
+const isInforce = p => p.status === 'Inforce' || p.status === 'Paid-up';   // both still give cover; paid-up just has no premium due
+const hasCover = p => FIELDS.some(f=>f.cov && p[f.key]>0);
+
+function runChecks(){
+  const I = []; const add = (level, p, field, msg) => I.push({level, p, field, msg});
+  const seen = {};
+  S.policies.forEach(p=>{
+    if (!p.policyNo) add('error', p, 'policyNo', 'Policy number missing');
+    else if (seen[p.policyNo]) add('warn', p, null, `Duplicate policy number (also on row ${seen[p.policyNo]}) — counted twice?`);
+    else seen[p.policyNo] = p._row;
+    if (p._flag.status==='invalid') add('error', p, 'status', `Status "${p._raw.status}" not recognised`);
+    else if (!p.status) add('error', p, 'status', 'Status missing — needed to know if it counts');
+    const live = p.status === 'Inforce' || p.status==null;
+    if (live){
+      if (p._flag.premium==='invalid') add('error', p, 'premium', `Premium "${p._raw.premium}" is not a number`);
+      else if (p.premium==null) add('error', p, 'premium', 'Premium missing');
+      if (p._flag.mode==='invalid') add('error', p, 'mode', `Payment mode "${p._raw.mode}" not recognised`);
+      else if (!p.mode) add('error', p, 'mode', 'Payment mode missing — needed for annual premium');
+    }
+    FIELDS.filter(f=>f.kind==='num' && f.key!=='premium').forEach(f=>{
+      if (p._flag[f.key]==='invalid') add('warn', p, f.key, `${f.label} "${p._raw[f.key]}" is not a number — treated as blank`);
+    });
+    FIELDS.filter(f=>f.kind==='date').forEach(f=>{
+      if (p._flag[f.key]==='invalid') add('warn', p, f.key, `${f.label} "${p._raw[f.key]}" not readable (use dd/mm/yyyy)`);
+    });
+    if (isInforce(p)){
+      if (!hasCover(p)) add('warn', p, null, 'No coverage amounts recorded for this inforce policy');
+      if (!p.nominee && (p.death>0 || p.tpd>0)) add('warn', p, 'nominee', 'Nominee not recorded');
+      if (p.expiry && p.expiry < new Date()) add('warn', p, 'status', `Marked Inforce but expiry ${fmtDate(p.expiry)} has passed`);
+    } else if (p.status) add('info', p, null, `${p.status} — listed in report but excluded from coverage totals`);
+    FIELDS.forEach(f=>{ if (p._flag[f.key]==='cleaned') add('info', p, null, `${f.label}: "${p._raw[f.key]}" read as ${f.kind==='num'?fmtRM(p[f.key]):p[f.key]}`); });
+  });
+  S.policies.filter(p=>p._extra).forEach(p => add(p.medLimit==null ? 'warn' : 'info', p, p.medLimit==null ? 'medLimit' : null,
+    `Extra line(s) under this policy: "${p._extra.join(' · ')}" — kept in Notes. If one is the medical annual limit, type the amount here (e.g. 990000).`));
+  if (S.shotInfo){
+    I.push({level:'warn', p:null, field:null, msg:'These figures were read from screenshots by Claude. Compare every amount, date and nominee with the screenshots below before sharing.'});
+    S.shotInfo.warnings.forEach(w=>I.push({level:'warn', p:null, field:null, msg:'Claude noted: ' + w}));
+    S.policies.forEach(p=>(S.shotInfo.uncertain[String(p.policyNo)]||[]).forEach(u=>
+      add('warn', p, FIELD[u.field] ? u.field : null, `Claude was unsure about ${FIELD[u.field]?.label || u.field}: ${u.note}`)));
+  }
+  const multStd = CLIENT_FIELDS.filter(f=>f.presets && String(S.client[f.key+'Sel']||'').startsWith('x:'));
+  if (multStd.length && !(+S.client.income>0)) I.push({level:'warn', p:null, field:null, msg:`${multStd.map(f=>f.label.split(' ')[0]).join(', ')} standard is set as × annual income, but annual income is blank — fill it in Client details`});
+  if (!(+S.client.income>0)) I.push({level:'info', p:null, field:null, msg:'Client annual income is blank — premium % of income will not be shown'});
+  if (!S.client.name) I.push({level:'warn', p:null, field:null, msg:'Client name is blank'});
+  S.issues = I; renderIssues();
+}
+
+function fixInput(it){
+  if (!it.p || !it.field) return '';
+  const f = FIELD[it.field], cur = it.p._raw[it.field] ?? '';
+  const id = `fx_${S.policies.indexOf(it.p)}_${it.field}`;
+  if (f.kind==='status') return `<select id="${id}" data-fix><option value="">— choose —</option>${STATUSES.map(s=>`<option>${s}</option>`).join('')}</select>`;
+  if (f.kind==='mode') return `<select id="${id}" data-fix><option value="">— choose —</option>${MODES.map(s=>`<option>${s}</option>`).join('')}</select>`;
+  const ph = f.kind==='date' ? 'dd/mm/yyyy' : f.kind==='num' ? 'e.g. 1800' : 'type value';
+  return `<input id="${id}" data-fix placeholder="${ph}" value="" title="Current: ${esc(cur||'(blank)')}" style="width:150px">`;
+}
+function renderIssues(){
+  const n = l => S.issues.filter(i=>i.level===l).length;
+  const e=n('error'), w=n('warn'), inf=n('info');
+  $('checkSummary').innerHTML = e ? `<div class="notice bad"><b>${e} item(s) must be fixed</b> before the report can be made. Type the correct value below, or fix it in Excel and reload.</div>`
+    : w ? `<div class="notice">No blocking errors. <b>${w} warning(s)</b> to review — fix them or tick the box to proceed.</div>`
+    : `<div class="notice good">All checks passed ✔</div>`;
+  const order = {error:0,warn:1,info:2};
+  $('issueTable').innerHTML = S.issues.length ? `<tr><th>Level</th><th>Policy</th><th>What I found</th><th>Your correction (optional)</th></tr>` +
+    [...S.issues].sort((a,b)=>order[a.level]-order[b.level]).map(it=>`<tr>
+      <td><span class="tag ${it.level}">${it.level==='error'?'Must fix':it.level==='warn'?'Warning':'FYI'}</span></td>
+      <td>${it.p ? esc(pid(it.p)) + `<div class="muted">${it.p._manual ? 'added in app' : 'row '+it.p._row}</div>` : 'Client'}</td>
+      <td>${esc(it.msg)}</td><td>${it.level!=='info' ? fixInput(it) : ''}</td></tr>`).join('') : '';
+  $('ackWarn').checked = $('ackWarn').checked && w>0;
+  $('ackWarn').parentElement.classList.toggle('hidden', !w);
+  renderChangeLog(); updateGenState();
+}
+$('btnApply').onclick = async () => {
+  const changes = [];
+  document.querySelectorAll('[data-fix]').forEach(el=>{
+    const v = el.value.trim(); if (!v) return;
+    const [, i, field] = el.id.split('_'); const p = S.policies[+i]; const f = FIELD[field];
+    const res = PARSERS[f.kind](v);
+    changes.push({p, f, v, res});
+  });
+  if (!changes.length){ tell('No corrections typed yet.'); return; }
+  const bad = changes.filter(c=>c.res.invalid);
+  if (bad.length){ tell('These values still can\'t be read:\n'+bad.map(c=>`• ${pid(c.p)} ${c.f.label}: "${c.v}"`).join('\n')); return; }
+  const list = changes.map(c=>`• ${pid(c.p)} — ${c.f.label}: "${c.p._raw[c.f.key]||'(blank)'}" → "${c.v}"`).join('\n');
+  if (!await ask(`Please confirm these ${changes.length} change(s):\n\n${list}\n\nChanges apply to this report only. Remember to update ePartner / your Excel too.`)) return;
+  changes.forEach(c=>{
+    S.changeLog.push({when:new Date().toLocaleString('en-MY'), policy:pid(c.p), field:c.f.label, from:c.p._raw[c.f.key]||'(blank)', to:c.v});
+    c.p[c.f.key] = c.res.val; c.p._raw[c.f.key] = c.v; c.p._flag[c.f.key] = null;
+  });
+  S.generated=false; runChecks();
+};
+function renderChangeLog(){
+  $('changeLogBox').innerHTML = S.changeLog.length ? `<div class="notice"><b>Changes you confirmed</b> (also saved in the Excel download):<br>${S.changeLog.map(c=>`${esc(c.policy)} · ${esc(c.field)}: ${esc(c.from)} → <b>${esc(c.to)}</b>`).join('<br>')}</div>` : '';
+}
+$('ackWarn').onchange = updateGenState;
+function updateGenState(){
+  const e = S.issues.some(i=>i.level==='error'), w = S.issues.some(i=>i.level==='warn');
+  const ok = !e && (!w || $('ackWarn').checked);
+  $('btnGen').disabled = !ok;
+  $('genHint').textContent = e ? 'Fix the "Must fix" items first.' : (w && !$('ackWarn').checked) ? 'Tick "I\'ve reviewed the warnings" first.' : '';
+  $('btnPdf').disabled = $('btnXlsx').disabled = !(ok && S.generated);
+}
+
+
+$('insurerList').innerHTML = INSURERS.map(([n,t])=>`<option value="${n}">${t}</option>`).join('');
+
+/* ================= Step 4: add a policy not in the file (e.g. another insurer) ================= */
+const ADD_FIELDS = ['insurer','policyNo','plan','type','status','start','expiry','premium','mode','death','tpd','ci','medLimit','roomBoard','pa','retire','nominee','nomineeRel','purpose'];
+const ADD_REQ = ['insurer','policyNo','status','premium','mode'];
+function renderAddForm(){
+  $('addForm').innerHTML = ADD_FIELDS.map(k=>{
+    const f = FIELD[k], req = ADD_REQ.includes(k) ? ' *' : '';
+    const list = f.kind==='status' ? STATUSES : f.kind==='mode' ? MODES : k==='type' ? TYPES : k==='purpose' ? PURPOSES.map(o=>o.label) : null;
+    const input = k==='insurer'
+      ? `<input data-add="insurer" list="insurerList" placeholder="Choose or type 选择或输入">`
+      : list
+      ? `<select data-add="${k}"><option value="">— choose —</option>${list.map(o=>`<option ${k==='status'&&o==='Inforce'?'selected':''}>${o}</option>`).join('')}</select>`
+      : `<input data-add="${k}" placeholder="${f.kind==='date'?'dd/mm/yyyy':f.kind==='num'?'e.g. 100000':''}">`;
+    return `<label>${esc(f.label)}${req}${input}</label>`;
+  }).join('');
+}
+function makeManualPolicy(raw){
+  const p = {_row:'app', _manual:true, _raw:{}, _flag:{}};
+  FIELDS.forEach(f=>{ const res = PARSERS[f.kind](raw[f.key] ?? ''); p[f.key]=res.val; p._raw[f.key]=String(raw[f.key] ?? ''); p._flag[f.key]=res.invalid?'invalid':null; });
+  return p;
+}
+$('btnAdd').onclick = async () => {
+  const raw = {};
+  document.querySelectorAll('[data-add]').forEach(el=>{ if (el.value.trim()) raw[el.dataset.add] = el.value.trim(); });
+  const probs = [];
+  ADD_REQ.forEach(k=>{ if (!raw[k] && !(k==='premium' && raw.status==='Paid-up')) probs.push(`${FIELD[k].label} is required`); });
+  Object.entries(raw).forEach(([k,v])=>{ if (PARSERS[FIELD[k].kind](v).invalid) probs.push(`${FIELD[k].label}: "${v}" can't be read`); });
+  if (!FIELDS.some(f=>f.cov && raw[f.key])) probs.push('Enter at least one coverage amount (Death, CI, Medical, Retirement…)');
+  if (raw.policyNo && S.policies.some(p=>String(p.policyNo)===raw.policyNo)) probs.push(`Policy ${raw.policyNo} is already in the list`);
+  if (probs.length){ tell('Please check:\n• ' + probs.join('\n• ')); return; }
+  const summary = Object.entries(raw).map(([k,v])=>`• ${FIELD[k].label}: ${v}`).join('\n');
+  if (!await ask(`Add this policy to ${S.client.name||'the client'}'s review?\n\n${summary}\n\nThis is added to the report only — your Excel / ePartner is not changed.`)) return;
+  const log = {when:new Date().toLocaleString('en-MY'), policy:raw.policyNo, field:'Policy added in app', from:'(not in file)', to:`${raw.insurer} · ${raw.plan||raw.type||''}`.trim()};
+  S.added.push({raw, log});
+  S.policies.push(makeManualPolicy(raw)); S.changeLog.push(log);
+  renderAddForm(); renderAdded(); S.generated=false; runChecks(); renderPurposes();
+};
+function renderAdded(){
+  const box = $('addedList'); if (!box) return;
+  box.innerHTML = S.added.length ? `<div class="notice"><b>Added in app 已加入 (${S.added.length}):</b><br>${S.added.map((a,i)=>
+    `${esc(a.raw.insurer)} · ${esc(a.raw.policyNo)} · ${esc(a.raw.plan||a.raw.type||'')} <button data-rm="${i}" style="padding:2px 8px;margin:2px 0 2px 6px">Remove</button>`).join('<br>')}</div>` : '';
+  box.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async ()=>{
+    const a = S.added[+b.dataset.rm];
+    if (!await ask(`Remove policy ${a.raw.policyNo} (${a.raw.insurer}) from this review?`)) return;
+    S.added.splice(+b.dataset.rm,1);
+    S.policies = S.policies.filter(p=>!(p._manual && String(p.policyNo)===a.raw.policyNo));
+    S.changeLog.push({when:new Date().toLocaleString('en-MY'), policy:a.raw.policyNo, field:'Policy removed', from:a.log.to, to:'(removed)'});
+    renderAdded(); S.generated=false; runChecks(); renderPurposes();
+  });
+}
+
+
+/* ================= Step 5: purpose of each policy (dropdown, or Other… free text) ================= */
+function renderPurposes(){
+  const rows = S.policies.map((p,i)=>{
+    const m = purposeIdx(p.purpose);           // -2 blank, -1 free text, else option
+    const opts = `<option value="">— choose —</option>` + PURPOSES.map((o,j)=>`<option value="${j}" ${m===j?'selected':''}>${esc(o.label)}</option>`).join('')
+      + `<option value="other" ${m===-1?'selected':''}>Other… 其他</option>`;
+    return `<tr><td>${esc(pid(p))}<div class="muted">${esc(p.plan||p.type||'')}${isInforce(p)?'':' · '+esc(p.status||'')}</div></td>
+      <td><input data-ins="${i}" id="ins_${i}" list="insurerList" value="${esc(p.insurer||'')}" placeholder="Choose or type" style="width:100%"></td>
+      <td><select data-pur="${i}" id="pur_${i}">${opts}</select>
+      <input data-puro="${i}" id="puro_${i}" placeholder="Type the purpose" value="${m===-1?esc(p.purpose):''}" ${m===-1?'':'hidden'} style="margin-top:4px;width:100%"></td></tr>`;
+  }).join('');
+  $('purposeTable').innerHTML = `<tr><th>Policy</th><th>Insurer 保险公司</th><th>Purpose 目的</th></tr>` + rows;
+  const setPurpose = (i, v) => {
+    const p = S.policies[i], from = p.purpose || '(blank)';
+    if ((p.purpose||'') === v) return;
+    p.purpose = v || null; p._raw.purpose = v;
+    const a = p._manual && S.added.find(x=>x.raw.policyNo===String(p.policyNo)); if (a) a.raw.purpose = v;
+    S.changeLog.push({when:new Date().toLocaleString('en-MY'), policy:pid(p), field:'Purpose', from, to:v||'(blank)'});
+    renderChangeLog(); if (S.generated) generate({quiet:true});
+  };
+  $('purposeTable').querySelectorAll('select[data-pur]').forEach(sel=>sel.onchange=()=>{
+    const i = +sel.dataset.pur, other = $('puro_'+i);
+    other.hidden = sel.value!=='other';
+    if (sel.value==='other') { other.focus(); return; }
+    setPurpose(i, sel.value==='' ? '' : PURPOSES[+sel.value].label);
+  });
+  $('purposeTable').querySelectorAll('input[data-puro]').forEach(inp=>inp.onchange=()=>setPurpose(+inp.dataset.puro, inp.value.trim()));
+  $('purposeTable').querySelectorAll('input[data-ins]').forEach(inp=>inp.onchange=()=>{
+    const p = S.policies[+inp.dataset.ins], v = inp.value.trim(), from = p.insurer || '(blank)';
+    if ((p.insurer||'') === v) return;
+    p.insurer = v || null; p._raw.insurer = v;
+    const a = p._manual && S.added.find(x=>x.raw.policyNo===String(p.policyNo)); if (a) a.raw.insurer = v;
+    S.changeLog.push({when:new Date().toLocaleString('en-MY'), policy:pid(p), field:'Insurer', from, to:v||'(blank)'});
+    renderChangeLog(); if (S.generated) generate({quiet:true});
+  });
+}
+
+/* ================= Step 5: summary + report ================= */
+function summarise(){
+  const c = S.client, inc = +c.income>0 ? +c.income : null;
+  const live = S.policies.filter(isInforce);
+  const sum = k => live.reduce((a,p)=>a+(p[k]||0),0);
+  const max = k => live.reduce((a,p)=>Math.max(a,p[k]||0),0);
+  const num = v => (v===''||v==null||isNaN(+v)) ? null : +v;
+  const epf = num(c.epf), prs = num(c.prs), plans = sum('retire');
+  // Retirement fund = savings plan values (policy rows) + EPF + PRS (client-level balances)
+  const std = (key) => {
+    const sel = c[key+'Sel'] || 'custom';
+    if (sel==='none') return {target:null, basis:''};
+    if (sel==='same') return std('gLife');
+    if (sel.startsWith('x:')){ const n = +sel.slice(2); return {target: inc ? inc*n : null, basis:`${n}× annual income`, needInc:!inc}; }
+    return {target:+c[key]||null, basis:'review standard'};
+  };
+  const retireParts = [['Plans', live.some(p=>p.retire!=null) ? plans : null], ['EPF', epf], ['PRS', prs]].filter(([,v])=>v!=null);
+  const areas = [
+    {key:'death', en:'Life / Death', zh:'身故', val:sum('death'), ...std('gLife')},
+    {key:'tpd', en:'Total & Permanent Disability', zh:'完全永久残疾 (TPD)', val:sum('tpd'), ...std('gTpd')},
+    {key:'ci', en:'Critical Illness', zh:'严重疾病', val:sum('ci'), ...std('gCi')},
+    {key:'retire', en:'Retirement fund', zh:'退休金 (计划+EPF+PRS)', val:plans+(epf||0)+(prs||0), ...std('gRet'),
+     known:retireParts.length>0, detail:retireParts.map(([k,v])=>`${k} ${fmtShort(v)}`).join(' · ')},
+    {key:'medLimit', en:'Medical annual limit', zh:'医药年度限额 (最高)', val:max('medLimit'), ...std('gMed')},
+    {key:'roomBoard', en:'Room & board / day', zh:'住院房租/日 (最高)', val:max('roomBoard'), ...std('gRb'), perDay:true},
+    {key:'pa', en:'Personal Accident', zh:'个人意外', val:sum('pa'), target:null},
+  ].map(a=>({...a, known: a.known ?? live.some(p=>p[a.key]!=null)}))
+   .map(a=>({...a, gap: a.target && a.known ? Math.max(0,a.target-a.val) : null,
+     status: a.needInc ? 'inc' : !a.known && a.val<=0 ? 'unk' : a.val<=0 ? 'bad' : !a.target ? 'na' : a.val>=a.target ? 'good' : 'warn'}));
+  const annual = p => (p.premium||0) * (MODE_FACTOR[p.mode] ?? 0);
+  const annualPrem = live.reduce((a,p)=>a+annual(p),0);
+  return {areas, live, excluded:S.policies.filter(p=>!isInforce(p)), annual, annualPrem, inc,
+    eci:sum('eci'), premPct: inc ? annualPrem/inc*100 : null, budget:+c.gBudget||null,
+    noNominee: live.filter(p=>!p.nominee && (p.death>0||p.tpd>0))};
+}
+
+const AREA_GOAL = {death:['protecting your family','守护家人'], tpd:['income if you cannot work','无法工作时的收入'], ci:['recovery without money worries','安心治疗'],
+  retire:['the retirement you want','理想的退休生活'], medLimit:['hospital bills','医药费'], roomBoard:['a comfortable ward','住院房型']};
+function gapPoint(a, style){
+  const u = a.perDay ? '/day' : '', v = fmtRM(a.val)+u, t = fmtRM(a.target)+u, g = fmtRM(a.gap)+u;
+  const why = a.basis.includes('income') ? ` (${a.basis})` : '';
+  const [goal, goalZh] = AREA_GOAL[a.key] || [a.en.toLowerCase(), a.zh];
+  if (style==='D') return {en:`<b>${a.en}</b>: ${v} vs ${t} — gap <b>${g}</b>.`, zh:`${a.zh}：差距 ${g}（现有 ${v} / 标准 ${t}）。`};
+  if (style==='I') return {en:`<b>${a.en} — ${goal}</b>: you've already built ${v}. Another ${g} reaches the ${t} goal${why}.`,
+                          zh:`${a.zh}（${goalZh}）：已累积 ${v}，再加 ${g} 就达到 ${t} 的目标。`};
+  if (style==='S') return {en:`<b>${a.en}</b>: you already have ${v} in place. When you're ready, we can look at the remaining ${g} together, step by step. No rush.`,
+                          zh:`${a.zh}：你已有 ${v} 的保障。等你方便时，我们再一起一步步看剩下的 ${g}，不急。`};
+  if (style==='C') return {en:`<b>${a.en}</b>: existing ${v} vs standard ${t} (${a.basis}) → gap ${g}, ${(a.gap/a.target*100).toFixed(1)}% of the standard.`,
+                          zh:`${a.zh}：现有 ${v}，标准 ${t}（${a.basis.includes('income')?a.basis:'检视标准'}），差距 ${g}，占标准 ${(a.gap/a.target*100).toFixed(1)}%。`};
+  return {en:`<b>${a.en}</b>: existing ${v} vs standard ${t}${why} — gap ${g}. Worth reviewing whether to strengthen this area.`,
+          zh:`${a.zh}：现有 ${fmtRM(a.val)}，标准 ${fmtRM(a.target)}，差距 ${fmtRM(a.gap)}，可检视是否需要加强。`};
+}
+function discussPoints(sm, style){
+  const pts = [];
+  sm.areas.filter(a=>a.status==='warn').forEach(a=>pts.push(gapPoint(a, style)));
+  sm.areas.filter(a=>a.status==='bad' && a.key!=='pa' && a.key!=='roomBoard').forEach(a=>pts.push({
+    en:`<b>${a.en}</b>: no existing cover recorded. Discuss whether this area is needed.`,
+    zh:`${a.zh}：目前未有记录的保障，可讨论是否需要。`}));
+  if (sm.noNominee.length) pts.push({
+    en:`<b>Nominee</b>: ${sm.noNominee.length} inforce policy(ies) have no nominee recorded (${sm.noNominee.map(pid).join(', ')}). Confirm or update the nomination.`,
+    zh:`提名：${sm.noNominee.length} 份有效保单未记录提名人，建议确认或更新提名。`});
+  sm.excluded.filter(p=>p.status==='Lapsed').forEach(p=>pts.push({
+    en:`<b>${esc(p.plan||pid(p))}</b> is lapsed${p.purpose?` (purpose: ${esc(p.purpose)})`:''}. Check whether this goal is covered elsewhere.`,
+    zh:`${esc(p.plan||pid(p))} 已失效，可确认这个目标是否已有其他安排。`}));
+  if (sm.premPct!=null && sm.budget && sm.premPct > sm.budget) pts.push({
+    en:`<b>Premium</b>: ${sm.premPct.toFixed(1)}% of income, above the ${sm.budget}% budget guideline. Review affordability before adding cover.`,
+    zh:`保费：占年收入 ${sm.premPct.toFixed(1)}%，高于 ${sm.budget}% 的预算参考，加保前应先检视负担能力。`});
+  const needInc = sm.areas.filter(x=>x.status==='inc');
+  if (needInc.length) pts.push({
+    en:`<b>Annual income needed</b>: ${needInc.map(x=>x.en).join(', ')} — the standard is set as a multiple of annual income. Add the client's income to compare.`,
+    zh:`需要年收入：${needInc.map(x=>x.zh).join('、')} 的标准是按年收入倍数计算，请填写客户年收入。`});
+  const notAssessed = sm.areas.filter(x=>x.status==='unk' && x.target);
+  if (notAssessed.length) pts.push({
+    en:`<b>Not yet recorded</b>: ${notAssessed.map(x=>x.en).join(', ')} — add the amounts${notAssessed.some(x=>x.key==='retire')?' (savings plan values, EPF and PRS balances)':''} to compare against the ${fmtShort(notAssessed[0].target)} standard.`,
+    zh:`尚未记录：${notAssessed.map(x=>x.zh).join('、')}，填写金额后才能与检视标准比较。`});
+  if (!pts.length) pts.push({en:'All areas meet the review standard. Keep nominees and contact details up to date.', zh:'各项保障已达检视标准，请保持提名及联络资料最新。'});
+  return pts;
+}
+
+
+/* Style-specific opening box. Same facts in every style; only emphasis, order and tone change. */
+function keyBox(sm, style){
+  const good = sm.areas.filter(a=>a.status==='good'), gaps = sm.areas.filter(a=>a.status==='warn').sort((a,b)=>b.gap/b.target - a.gap/a.target);
+  const nm = a => `${a.en} ${a.zh}`;
+  const li = (en, zh) => `<li>${en}<span class="zh">${zh}</span></li>`;
+  let title, zhTitle, items = [];
+  if (style==='D'){
+    title = 'Bottom line'; zhTitle = '重点';
+    items.push(gaps.length ? li(`Biggest gaps: ${gaps.slice(0,2).map(a=>`<b>${a.en} ${fmtShort(a.gap)}</b>`).join(', ')}.`, `最大差距：${gaps.slice(0,2).map(a=>`${a.zh} ${fmtShort(a.gap)}`).join('，')}。`)
+                           : li('No gaps against your review standard.', '全部达到检视标准。'));
+    if (good.length) items.push(li(`Strong: ${good.map(a=>a.en).join(', ')}.`, `已达标：${good.map(a=>a.zh).join('、')}。`));
+    items.push(li(`Annual premium ${fmtRM(sm.annualPrem)} across ${sm.live.length} policies.`, `${sm.live.length} 份保单，年缴 ${fmtRM(sm.annualPrem)}。`));
+    items.push(li('Next step: a 15-minute review of the top gaps, with options side by side.', '下一步：15 分钟检视最大的差距，并列比较选项。'));
+  } else if (style==='I'){
+    title = 'Your protection story'; zhTitle = '你的保障故事';
+    const purposes = [...new Set(sm.live.map(p=>p.purpose).filter(Boolean))];
+    items.push(li(`You've put ${sm.live.length} policies in place${purposes.length?` for ${purposes.slice(0,3).map(esc).join(', ')}`:' to look after the people who matter to you'}.`,
+                  `你已安排了 ${sm.live.length} 份保单，照顾你在乎的人。`));
+    if (good.length) items.push(li(`What's working well: ${good.map(a=>`<b>${a.en}</b>`).join(', ')}.`, `做得好的：${good.map(a=>a.zh).join('、')}。`));
+    if (gaps.length) items.push(li(`Your next chapter: ${gaps.map(a=>(AREA_GOAL[a.key]||[a.en])[0]).join(', ')}.`, `下一章：${gaps.map(a=>(AREA_GOAL[a.key]||['',a.zh])[1]).join('、')}。`));
+  } else if (style==='S'){
+    title = 'What you already have'; zhTitle = '你已有的保障';
+    items.push(li(`${sm.live.length} policies in force, with an annual premium of ${fmtRM(sm.annualPrem)}.`, `${sm.live.length} 份有效保单，年缴保费 ${fmtRM(sm.annualPrem)}。`));
+    if (good.length) items.push(li(`Already on track: ${good.map(a=>a.en).join(', ')}.`, `已经达标：${good.map(a=>a.zh).join('、')}。`));
+    const steps = [];
+    if (sm.noNominee.length) steps.push(['Confirm the nominee details on every policy.', '确认每份保单的受益人资料。']);
+    if (gaps.length) steps.push([`Look at ${gaps[0].en.toLowerCase()} first, in a short follow-up chat.`, `先看${gaps[0].zh}，约个简短的跟进。`]);
+    steps.push(['Review again at your next annual review.', '下次年度检视时再一起看。']);
+    items.push(li(`Next steps, one at a time:<ol style="margin:4px 0 0;padding-left:18px">${steps.map(([e,z])=>`<li>${e} <span class="zh" style="display:inline">${z}</span></li>`).join('')}</ol>`, ''));
+    items.push(li('No decision is needed today.', '今天不需要做任何决定。'));
+  } else if (style==='C'){
+    title = 'How this review was calculated'; zhTitle = '检视方法';
+    items.push(li(`Data as at ${S.client.reviewDate ? fmtDate(parseDate(S.client.reviewDate).val) : fmtDate(new Date())}; source: ${esc(S.source||'policy records')}. ${S.policies.length} records, ${sm.live.length} counted (inforce or paid-up only).`,
+                  `资料日期如上；共 ${S.policies.length} 份记录，只计算有效或已缴清的 ${sm.live.length} 份。`));
+    items.push(li('Life, TPD, CI = sum of each policy\'s sum assured. Medical limit and room & board = highest single policy. Retirement = savings plan values + EPF + PRS.',
+                  '身故、TPD、CI＝各保单保额相加；医药限额及房租＝取最高一份；退休金＝储蓄计划价值＋EPF＋PRS。'));
+    items.push(li('Annual premium = premium × 12 (monthly), × 4 (quarterly), × 2 (half-yearly), × 1 (yearly); single premium not counted.', '年缴保费＝月缴×12、季缴×4、半年×2、年缴×1；整付保费不计入。'));
+    items.push(li(`Standards: ${sm.areas.filter(a=>a.target).map(a=>`${a.en} ${fmtShort(a.target)}${a.perDay?'/day':''}${a.basis.includes('income')?` (${a.basis})`:''}`).join('; ')}. Gap = standard − existing.`,
+                  '差距＝标准 − 现有。标准为本次检视的规划基准。'));
+    const fixed = S.changeLog.length, ack = S.issues.filter(i=>i.level==='warn').length;
+    items.push(li(`Data checks: ${fixed} correction(s) confirmed, ${ack} warning(s) reviewed before this report was produced.`, `资料检查：确认 ${fixed} 项修正，审阅 ${ack} 项提醒。`));
+  } else return '';
+  return `<div class="sec" style="margin-top:0"><h3>${title}</h3><span class="zh">${zhTitle}</span></div>
+    <div class="discuss" style="border-left-color:var(--purple)"><ul style="margin:0;padding-left:18px">${items.join('')}</ul></div>`;
+}
+function coverageRow(a){
+  const scale = Math.max(a.val, a.target||0) || 1;
+  const fw = a.val/scale*100, tl = a.target ? a.target/scale*100 : null;
+  const chip = {good:'✔ On track 已达标', warn:'▲ Review 可加强', bad:'● Not covered 未有', na:'No standard set', unk:'? Not recorded 未记录', inc:'Needs income 需年收入'}[a.status];
+  const unit = a.perDay ? '/day' : '';
+  const tip = `${a.en}: ${fmtRM(a.val)}${unit}` + (a.detail ? ` (${a.detail})` : '') + (a.target ? ` · standard ${fmtRM(a.target)}${unit}` + (a.gap ? ` · gap ${fmtRM(a.gap)}${unit}` : '') : '');
+  return `<div class="cov-row">
+    <div class="cov-label">${a.en}<span class="zh">${a.zh}</span>${a.detail?`<span class="muted" style="display:block;font-size:10.5px;font-weight:400">${esc(a.detail)}</span>`:''}</div>
+    <div class="track" data-tip="${esc(tip)}"><div class="fill" style="width:${fw}%"></div>${tl!=null?`<div class="target" style="left:calc(${tl}% - 1px)"></div>`:''}</div>
+    <div class="cov-val"><b>${fmtRM(a.val)}${unit}</b>${a.target?`<small>of ${fmtShort(a.target)}${unit}${a.gap?` · gap ${fmtShort(a.gap)}`:''}</small>`:'<small>&nbsp;</small>'}</div>
+    <div class="chip ${a.status}">${chip}</div></div>`;
+}
+
+function policyCard(p, sm){
+  const covers = FIELDS.filter(f=>f.cov && p[f.key]>0).map(f=>`<dt>${f.label.replace(/ \(RM.*\)/,'')}</dt><dd>${fmtRM(p[f.key])}${f.key==='roomBoard'?'/day':''}</dd>`).join('');
+  const nom = p.nominee ? `${esc(p.nominee)}${p.nomineeRel?` (${esc(p.nomineeRel)}${p.nomType?' · '+esc(p.nomType):''})`:''}`
+    : `<span class="chip ${isInforce(p)&&(p.death>0||p.tpd>0)?'bad':'na'}">Not recorded 未记录</span>`;
+  const st = isInforce(p) ? 'good' : p.status==='Lapsed' ? 'bad' : 'na';
+  return `<div class="pcard ${isInforce(p)?'':'excluded'}">
+    <div class="top"><div><div class="name">${esc(p.plan||'(plan name not recorded)')}</div>
+      <div class="sub">${esc(p.insurer||'')} · ${esc(pid(p))} · ${esc(p.type||'')}</div></div>
+      <span class="chip ${st}">${esc(p.status||'?')}</span></div>
+    <div class="purpose"><b>Purpose 目的:</b> ${esc(p.purpose||'Not recorded 未记录')}</div>
+    <dl>${covers || '<dt>Coverage</dt><dd>Not recorded</dd>'}
+      <dt>Premium 保费</dt><dd>${fmtRM(p.premium)} ${esc(p.mode||'')}${p.mode && p.mode!=='Yearly' && p.mode!=='Single' ? ` <span class="muted">(${fmtRM(sm.annual(p))}/yr)</span>`:''}</dd>
+      <dt>Nominee 提名人</dt><dd>${nom}</dd>
+      <dt>Period 期限</dt><dd>${p.expiry ? `${fmtDate(p.start)} – ${fmtDate(p.expiry)}` : `from ${fmtDate(p.start)}`}</dd>
+      ${p.waiver?`<dt>Waiver of premium</dt><dd>${esc(p.waiver)}</dd>`:''}</dl></div>`;
+}
+
+function generate(opts){
+  const sm = summarise(), c = S.client;
+  const rd = c.reviewDate ? fmtDate(parseDate(c.reviewDate).val) : fmtDate(new Date());
+  const med = sm.areas.find(a=>a.key==='medLimit');
+  const head = `<div class="hero"><div class="t1">Policy Review Snapshot</div><div class="t2 zh">保单检视摘要 · Your protection at a glance</div>
+    <div class="meta"><span>Client 客户: <b>${esc(c.name||'Not recorded')}</b></span>${c.age?`<span>Age 年龄: <b>${esc(c.age)}</b></span>`:''}
+    <span>Review date 检视日期: <b>${rd}</b></span><span>Prepared by 负责人: <b>${esc(c.preparedBy||'')}</b></span></div></div>`;
+  const foot = n => `<div class="foot">${esc(c.name||'')} · ${rd} · page ${n}</div>`;
+  const disclaimer = `<div class="disclaimer">This summary is based on policy information available as at ${rd} and is for review discussion only. Benefits, exclusions and conditions are governed by each policy contract — please refer to your policy documents. Review standards are planning benchmarks agreed for this review, not official figures or a recommendation to buy.<br><span class="zh">本摘要根据 ${rd} 的保单资料整理，仅供检视讨论。所有保障、除外条款及条件以保单合约为准。检视标准为本次检视的规划基准，并非官方数据或购买建议。</span></div>`;
+
+  // Premium grouped by purpose (what the money is for), with the plans in each group in small text
+  const premBars = (()=>{
+    const groups = new Map();
+    sm.live.forEach(p=>{
+      const v = sm.annual(p); if (!v) return;
+      const i = purposeIdx(p.purpose);
+      const key = i>=0 ? PURPOSES[i].label : (p.purpose || 'Purpose not set 未设目的');
+      const g = groups.get(key) || {v:0, plans:[], unset:!p.purpose};
+      g.v += v; g.plans.push(p.plan||pid(p)); groups.set(key, g);
+    });
+    const rows = [...groups].map(([label,g])=>({label, ...g})).sort((a,b)=>(a.unset-b.unset) || b.v-a.v);
+    const mx = Math.max(...rows.map(r=>r.v), 1);
+    const share = v => sm.inc ? `${(v/sm.inc*100).toFixed(1)}% of income` : `${(v/sm.annualPrem*100).toFixed(0)}% of premium`;
+    const list = rows.map(r=>`<div class="prem-row"><div><b style="font-weight:600${r.unset?';color:var(--muted)':''}">${esc(r.label)}</b><div class="muted" style="font-size:10px">${r.plans.map(esc).join(' · ')}</div></div>
+      <div class="track" data-tip="${esc(r.label+': '+fmtRM(r.v)+' per year · '+share(r.v))}"><div class="fill" style="width:${r.v/mx*100}%;background:${r.unset?'var(--muted)':'var(--pink)'}"></div></div>
+      <div class="cov-val"><b>${fmtRM(r.v)}</b><small>${share(r.v)}</small></div></div>`).join('');
+    // Total line: per year, per month, and share of income (against the premium budget when one is set)
+    const over = sm.premPct!=null && sm.budget && sm.premPct > sm.budget;
+    const total = !rows.length ? '' : `<div class="prem-total">
+      <span>Total <b>${fmtRM(sm.annualPrem)}</b> / year · ≈ ${fmtRM(sm.annualPrem/12)} / month</span>
+      ${sm.inc ? `<span class="${over?'over':''}"><b>${sm.premPct.toFixed(1)}%</b> of annual income${sm.budget?` · budget ${sm.budget}%`:''}</span>
+      <span class="zh">年缴保费占年收入 ${sm.premPct.toFixed(1)}%${sm.budget?`（预算 ${sm.budget}%）`:''}</span>`
+               : `<span class="muted">Add annual income in Client details to show % of income. 填写年收入即可显示占收入百分比。</span>`}
+    </div>`;
+    return list + total;
+  })();
+
+  const style = S.client.disc || '';
+  const legend = `<div class="legend"><span><i style="width:14px;height:10px;background:var(--purple);border-radius:2px"></i>Existing cover 现有保障</span>
+      <span><i style="width:0;height:12px;border-left:2px dashed var(--ink)"></i>Standard 检视标准</span>
+      <span>Inforce policies only; retirement adds EPF+PRS 只计有效保单</span></div>`;
+  const chipTxt = {good:'✔ On track 已达标', warn:'▲ Review 可加强', bad:'● Not covered 未有', na:'No standard set', unk:'? Not recorded 未记录', inc:'Needs income 需年收入'};
+  // C: the coverage section as a table with % of standard met
+  const covTable = `<div class="cov"><table class="covt"><tr><th>Coverage area 保障类别</th><th class="n">Existing</th><th class="n">Standard</th><th class="n">Gap</th><th>Met</th><th>Status</th></tr>
+    ${sm.areas.map(a=>{ const u=a.perDay?'/day':''; const pct = a.target ? Math.min(100, a.val/a.target*100) : null;
+      return `<tr><td><b>${a.en}</b><div class="muted" style="font-size:10.5px">${a.zh}${a.detail?' · '+esc(a.detail):''}</div></td>
+        <td class="n">${fmtRM(a.val)}${u}</td><td class="n">${a.target?fmtRM(a.target)+u:'–'}${(a.basis||'').includes('income')?`<div class="muted" style="font-size:10px">${a.basis}</div>`:''}</td>
+        <td class="n">${a.gap?fmtRM(a.gap)+u:'–'}</td>
+        <td>${pct!=null && a.known ? `<div class="mini"><i style="width:${pct}%"></i></div><div class="muted" style="font-size:10px">${pct.toFixed(0)}%</div>` : '–'}</td>
+        <td><span class="chip ${a.status}">${chipTxt[a.status]}</span></td></tr>`;}).join('')}</table>
+    <div class="legend"><span>Gap = standard − existing. Inforce policies only; retirement adds EPF+PRS. 差距＝标准−现有。</span></div></div>`;
+  // D: the three largest gaps as big numbers, in place of the premium breakdown
+  const topGaps = sm.areas.filter(a=>a.status==='warn').sort((a,b)=>b.gap/b.target - a.gap/a.target).slice(0,3);
+  const gapTiles = topGaps.length
+    ? `<div class="gap-tiles">${topGaps.map(a=>`<div class="gap-tile"><div class="k">${a.en}<span class="zh">${a.zh}</span></div><div class="v">${fmtShort(a.gap)}${a.perDay?'/day':''}</div><div class="s">gap to ${fmtShort(a.target)} standard · have ${fmtShort(a.val)}</div></div>`).join('')}</div>`
+    : `<div class="cov"><b>All areas meet the review standard.</b> <span class="zh">全部达到检视标准。</span></div>`;
+  const lower = style==='D'
+    ? `<div class="sec"><h3>Biggest gaps</h3><span class="zh">最大差距</span></div>${gapTiles}`
+    : `<div class="sec"><h3>Where your premium goes</h3><span class="zh">保费用途 (按目的 · 占年收入)</span></div>
+    <div class="cov">${premBars || '<span class="muted">No premium recorded.</span>'}</div>`;
+  const covSection = style==='C' ? covTable : `<div class="cov">${sm.areas.map(coverageRow).join('')}${legend}</div>`;
+  const page1 = `<div class="page">${head}
+    <div class="tiles">
+      <div class="tile"><div class="k">Life cover 身故保障</div><div class="v">${fmtRM(sm.areas[0].val)}</div><div class="s">${sm.live.length} inforce policies</div></div>
+      <div class="tile"><div class="k">Critical illness 严重疾病</div><div class="v">${fmtRM(sm.areas[2].val)}</div><div class="s">${sm.eci?'+ early CI '+fmtRM(sm.eci):'&nbsp;'}</div></div>
+      <div class="tile"><div class="k">Medical limit 医药限额</div><div class="v">${med.val?fmtRM(med.val):'None'}</div><div class="s">per year (highest card)</div></div>
+      <div class="tile"><div class="k">Annual premium 年缴保费</div><div class="v">${fmtRM(sm.annualPrem)}</div><div class="s">≈ ${fmtRM(sm.annualPrem/12)}/month${sm.premPct!=null?` · ${sm.premPct.toFixed(1)}% of income`:''}</div></div>
+    </div>
+    <div class="sec"><h3>Protection vs review standard</h3><span class="zh">现有保障 vs 检视标准</span></div>
+    ${covSection}
+    ${lower}
+    <div class="disclaimer">For review discussion only. Benefits are governed by each policy contract; review standards are planning benchmarks, not official figures. <span class="zh">仅供检视讨论，所有保障以保单合约为准。</span></div>${foot('%%PG%%')}</div>`;
+
+  // Split long lists across A4 pages so nothing gets cut off when printing
+  const chunk = (arr, n) => arr.length ? Array.from({length:Math.ceil(arr.length/n)}, (_,i)=>arr.slice(i*n, i*n+n)) : [[]];
+  const cardPages = chunk([...sm.live, ...sm.excluded], 8).map((grp,i)=>`<div class="page">
+    <div class="sec" style="margin-top:0"><h3>Your policies at a glance${i?' (cont.)':''}</h3><span class="zh">保单一览 · 目的与提名人</span></div>
+    <div class="pcards">${grp.map(p=>policyCard(p,sm)).join('')}</div>
+    <div class="disclaimer">Benefits are governed by each policy contract. <span class="zh">所有保障以保单合约为准。</span></div>${foot('%%PG%%')}</div>`).join('');
+
+  const cols = ['policyNo','plan','type','status','premium','mode','death','tpd','ci','medLimit','roomBoard','pa','nominee','purpose'];
+  const pts = discussPoints(sm, style);
+  const box = keyBox(sm, style);
+  const discussHtml = `<div class="sec"${box?'':' style="margin-top:0"'}><h3>${style==='D'?'Gaps':'Areas to discuss'}</h3><span class="zh">${style==='D'?'差距':'可以加强 / 跟进的方面'}</span></div>
+    <div class="discuss"><ul style="margin:0;padding-left:18px">${pts.map(d=>`<li>${d.en}<span class="zh">${d.zh}</span></li>`).join('')}</ul></div>`;
+  // Standard style keeps the discussion on the appendix page; DISC styles get their own page with the opening box
+  const ownPage = !!box;
+  const discussPage = ownPage ? `<div class="page">${box}${discussHtml}${disclaimer}${foot('%%PG%%')}</div>` : '';
+  const firstRows = ownPage ? 14 : Math.max(2, 14 - pts.length);           // fewer table rows on the page that also carries the discussion list
+  const rowGroups = [S.policies.slice(0, firstRows), ...chunk(S.policies.slice(firstRows), 14).filter(g=>g.length)];
+  const appxPages = rowGroups.map((grp,i)=>{
+    const last = i === rowGroups.length-1;
+    return `<div class="page">
+    ${i===0 && !ownPage ? discussHtml : ''}
+    <div class="sec"${i||ownPage?' style="margin-top:0"':''}><h3>Appendix: policy details${i?' (cont.)':''}</h3><span class="zh">附录：保单明细 (Excel 档同附)</span></div>
+    <table class="appx"><tr>${cols.map(k=>`<th>${FIELD[k].label.replace(' (RM)','').replace(' (RM/day)','')}</th>`).join('')}<th>Annual premium</th></tr>
+    ${grp.map(p=>`<tr>${cols.map(k=>{const f=FIELD[k]; const v=p[k];
+      return f.kind==='num' ? `<td class="n">${v==null?'':Math.round(v).toLocaleString('en-MY')}</td>` : `<td>${esc(v??'')}</td>`;}).join('')}
+      <td class="n">${isInforce(p)?Math.round(sm.annual(p)).toLocaleString('en-MY'):'excluded'}</td></tr>`).join('')}
+    ${last ? `<tr><td colspan="${cols.length}" style="text-align:right"><b>Total annual premium (inforce)</b></td><td class="n"><b>${Math.round(sm.annualPrem).toLocaleString('en-MY')}</b></td></tr>` : ''}</table>
+    ${disclaimer}${foot('%%PG%%')}</div>`;
+  }).join('');
+
+  // D and I want the gaps right after the dashboard; S and C read what they have first
+  const order = (style==='D' || style==='I') ? [page1, discussPage, cardPages, appxPages] : [page1, cardPages, discussPage, appxPages];
+  let pg = 0;
+  $('report').innerHTML = order.join('').replace(/%%PG%%/g, () => ++pg);
+  $('report').className = 'report-stage' + (style ? ' style-'+style : '');
+  S.generated = true; S.summary = sm; updateGenState();
+  if (opts?.quiet !== true) $('report').scrollIntoView({behavior:'smooth'});
+}
+$('btnGen').onclick = () => generate();
+
+/* ================= Outputs (always ask first) ================= */
+const fileBase = () => `Policy Review - ${(S.client.name||'Client').replace(/[\\/:*?"<>|]/g,'')} - ${(S.client.reviewDate||new Date().toISOString().slice(0,10))}`;
+function confirmSave(kind){
+  return ask(`Save the ${kind} for ${S.client.name||'this client'}?\n\nBefore you send it to the client, please double-check:\n• client name and review date\n• coverage and premium figures\n• nominee details\n\nThis app never sends anything — you decide when and how to share it.`);
+}
+/* Saving: inside claude.ai through the downloads capability (the viewer confirms); elsewhere a normal browser download */
+async function saveFile(filename, blob){
+  const dl = window.claude?.use ? await claude.use('downloads') : null;
+  if (dl){
+    try { await dl.save({filename, data:blob}); $('genHint').textContent = 'Saved: ' + filename; }
+    catch(e){ if (e.code !== 'declined') tell(`Could not save the file (${e.code}). ${e.code==='rate_limited' ? 'Please wait a moment and try again.' : ''}`); }
+    return;
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 10000);
+  $('genHint').textContent = 'Saved: ' + filename;
+}
+async function buildPdf(){
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({unit:'mm', format:'a4', compress:true});
+  const pages = [...document.querySelectorAll('#report .page')];
+  document.body.classList.add('pdf-export');
+  try {
+    for (let i=0;i<pages.length;i++){
+      $('genHint').textContent = `Building PDF… page ${i+1} of ${pages.length}`;
+      const canvas = await html2canvas(pages[i], {scale:2, backgroundColor:'#FFFBF5', logging:false});
+      if (i) pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+    }
+  } finally { document.body.classList.remove('pdf-export'); }
+  return pdf.output('blob');
+}
+$('btnPdf').onclick = async () => {
+  if (!await confirmSave('PDF report')) return;
+  if (!window.jspdf || !window.html2canvas){ tell('The PDF tools could not load — please check your internet connection and reopen this page.'); return; }
+  $('btnPdf').disabled = true;
+  try { await saveFile(fileBase()+'.pdf', await buildPdf()); }
+  catch(e){ tell('Could not build the PDF: ' + (e.message||e)); }
+  finally { $('btnPdf').disabled = false; }
+};
+$('btnXlsx').onclick = async () => {
+  if (!await confirmSave('Excel file')) return;
+  const sm = S.summary, c = S.client, wb = XLSX.utils.book_new();
+  const summary = [
+    ['Policy Review Snapshot 保单检视摘要'], [],
+    ['Client', c.name||''], ['Age', c.age||''], ['Annual income (RM)', +c.income||''], ['Review date', c.reviewDate||''], ['Prepared by', c.preparedBy||''], ['EPF balance (RM)', c.epf===''||c.epf==null?'':+c.epf], ['PRS balance (RM)', c.prs===''||c.prs==null?'':+c.prs], [],
+    ['Coverage area','Existing (RM)','Standard (RM)','Gap (RM)','Basis','Status'],
+    ...sm.areas.map(a=>[a.en+' / '+a.zh, a.val, a.target??'', a.gap??'', a.target?a.basis:'', {good:'On track',warn:'Review',bad:'Not covered',na:'No standard set',unk:'Not recorded',inc:'Needs annual income'}[a.status]]),
+    [], ['Total annual premium (inforce)', Math.round(sm.annualPrem)], ['Monthly equivalent', Math.round(sm.annualPrem/12)],
+    ['Premium % of income', sm.premPct!=null ? +sm.premPct.toFixed(1) : ''], ['Premium budget guideline %', sm.budget??''], [],
+    ['Areas to discuss'], ...discussPoints(sm, S.client.disc||'').map(d=>[d.en.replace(/<[^>]+>/g,''), d.zh]), [],
+    ['Review standards are planning benchmarks, not official figures. Benefits subject to policy contract terms.']
+  ];
+  const ws1 = XLSX.utils.aoa_to_sheet(summary); ws1['!cols']=[{wch:44},{wch:16},{wch:16},{wch:14},{wch:14},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+  const pol = [[...FIELDS.map(f=>f.label),'Annual Premium (RM)','Counted in totals','Source']].concat(S.policies.map(p=>[
+    ...FIELDS.map(f=>{const v=p[f.key]; return v instanceof Date ? fmtDate(v) : v ?? '';}), isInforce(p)?sm.annual(p):0, isInforce(p)?'Yes':'No', p._manual?'Added in app':'File']));
+  const ws2 = XLSX.utils.aoa_to_sheet(pol); ws2['!cols']=pol[0].map(h=>({wch:Math.max(12,String(h).length+2)}));
+  XLSX.utils.book_append_sheet(wb, ws2, 'Policies');
+  const chk = [['Level','Policy','Finding','Resolution']].concat(S.issues.map(i=>[i.level, i.p?pid(i.p):'Client', i.msg, i.level==='warn'?'Reviewed & acknowledged':i.level==='info'?'FYI':'' ]));
+  const ws3 = XLSX.utils.aoa_to_sheet(chk); ws3['!cols']=[{wch:8},{wch:14},{wch:70},{wch:26}];
+  XLSX.utils.book_append_sheet(wb, ws3, 'Data checks');
+  const log = [['When','Policy','Field','From','To']].concat(S.changeLog.map(l=>[l.when,l.policy,l.field,l.from,l.to]));
+  const ws4 = XLSX.utils.aoa_to_sheet(log); ws4['!cols']=[{wch:22},{wch:14},{wch:24},{wch:18},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, ws4, 'Change log');
+  const buf = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+  await saveFile(fileBase()+'.xlsx', new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+};
+
+/* ================= Hover tooltip ================= */
+const tip = $('tip');
+document.addEventListener('mousemove', e=>{
+  const t = e.target.closest('[data-tip]');
+  if (!t){ tip.style.display='none'; return; }
+  tip.textContent = t.dataset.tip; tip.style.display='block';
+  tip.style.left = Math.min(e.clientX+14, innerWidth-280)+'px'; tip.style.top = (e.clientY+14)+'px';
+});
+
+/* ================= Test hook: ?demo=1 loads the sample and walks every step (used for the sample PDF) ================= */
+async function runSampleDemo(){
+  AUTO_YES = true;          // auto-accept the confirmation dialogs while the fictional sample is walked through
+  await $('btnSample').onclick(); await $('btnMap').onclick();
+  const fx = document.querySelector('[id$="_mode"]'); if (fx){ fx.value='Yearly'; await $('btnApply').onclick(); }
+  $('ackWarn').checked = true; updateGenState(); generate();
+  AUTO_YES = false; S.isSample = true;
+  $('srcName').textContent = 'Showing a fictional sample client. Load an Excel file or screenshots to start a real review.';
+  window.scrollTo(0,0);
+}
+const _qs = new URLSearchParams(location.search);
+if (_qs.get('demo')==='1' || (!_qs.get('testplan'))) runSampleDemo();
+/* Test hook: ?testplan=<json> replays a recorded test run on a file served next to this page (used for real-data test PDFs).
+   json = {file, defaults:{status:'Inforce'}, client:{...}, fixes:{'<policyNo>':{field:value}}} */
+const _tp = new URLSearchParams(location.search).get('testplan');
+if (_tp) (async () => {
+  const plan = JSON.parse(_tp);
+  AUTO_YES = true;          // test only: auto-accept the confirmation dialogs
+  const buf = await fetch(plan.file).then(r=>r.arrayBuffer());
+  loadWorkbook(XLSX.read(buf,{type:'array',cellDates:true}), plan.file.split('/').pop());
+  Object.assign(S.defaults, plan.defaults||{});
+  Object.entries(plan.client||{}).forEach(([k,v])=>{ S.client[k]=v; }); renderClient();
+  await $('btnMap').onclick();
+  Object.entries(plan.fixes||{}).forEach(([no,f])=>Object.entries(f).forEach(([field,v])=>{
+    const i = S.policies.findIndex(p=>String(p.policyNo)===no); const el = $(`fx_${i}_${field}`); if (el) el.value = v;
+  }));
+  if (plan.fixes) await $('btnApply').onclick();
+  $('ackWarn').checked = true; updateGenState(); generate();
+})();
+</script>
+<script>
+/* Installable app: cache the app so it opens offline after the first visit */
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
