@@ -1768,7 +1768,7 @@ renderTabs();
 /* ================= Google Drive (claude.ai version only, through the viewer's own Google Drive connector) =================
    Folder layout: "Client Policy Review" / <letter> / <CLIENT NAME> / review files.
    Reading is free; every change (upload, moving old files to trash, new master list) is confirmed first. */
-const GD = 'Google Drive', ROOT_NAME = 'Client Policy Review', MASTER_NAME = 'Client Master List 客户总表';
+const GD = 'Google Drive', ROOT_NAME = 'Client Policy Review', MASTER_NAME = 'Client Master List 客户总表', HIST_NAME = 'History 历史记录';
 const MIME = {folder:'application/vnd.google-apps.folder', xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pdf:'application/pdf', sheet:'application/vnd.google-apps.spreadsheet'};
 const DRV = {mcp:null, root:null, letters:[], clients:[], master:null, fileArgs:false};
 const qs = v => `'${String(v).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}'`;
@@ -1858,14 +1858,34 @@ $('btnDriveLoad').onclick = async () => {
     loadWorkbook(wb, f.title);
     S.drive = {folder:c, file:f};
     $('fileIn').value = '';
-    msg.innerHTML = `Loaded <b>${esc(f.title)}</b> from Drive${files.length>1?` (newest of ${files.length} Excel files)`:''}. Add any new or other-insurer policies under <b>Policies</b>; Save to Drive then updates this review.`;
+    const past = await pastReviews(c, files.slice(1));
+    msg.innerHTML = `Loaded <b>${esc(f.title)}</b> from Drive. Add any new or other-insurer policies under <b>Policies</b>; Save to Drive then saves a new review and keeps this one in History.`
+      + (past.length ? `<br><b>Past reviews 以往检视 (${past.length}):</b> ` + past.map(x=>`${esc(x.date)} ${['xlsx','pdf'].filter(k=>x[k]).map(k=>`<a href="${esc(x[k].viewUrl||'https://drive.google.com/file/d/'+x[k].id+'/view')}" target="_blank" rel="noopener">${k==='pdf'?'PDF':'Excel'}</a>`).join(' ')}`).join(' · ') : '<br>No past reviews in History yet.');
   } catch(e){ msg.textContent = driveErr(e); }
   finally { $('btnDriveLoad').disabled = false; }
 };
 
+
+/* History: old reviews are kept in "<client folder>/History 历史记录" so you can see when each review was done and what it said */
+async function histFolder(client, create){
+  const h = (await gdSearch(`parentId = ${qs(client.id)} and title = ${qs(HIST_NAME)} and mimeType = ${qs(MIME.folder)}`))[0];
+  if (h || !create) return h || null;
+  return (await gd('create_file', {title:HIST_NAME, contentMimeType:MIME.folder, parentId:client.id})).payload;
+}
+async function pastReviews(client, extra){
+  const h = await histFolder(client, false);
+  const fs = [...(h ? await gdSearch(`parentId = ${qs(h.id)}`) : []), ...(extra||[])].filter(f=>f.mimeType===MIME.xlsx || f.mimeType===MIME.pdf);
+  const byDate = {};
+  fs.forEach(f => { const d = dateInTitle(f.title) || String(f.modifiedTime||'').slice(0,10) || '?';
+    const e = byDate[d] = byDate[d] || {date:d}; const k = f.mimeType===MIME.pdf ? 'pdf' : 'xlsx'; if (!e[k]) e[k] = f; });
+  return Object.values(byDate).sort((a,b)=>b.date.localeCompare(a.date));
+}
 function updateDriveButtons(){ $('btnDriveSave').disabled = !S.generated; }
 async function ensureClientFolder(name){
-  if (S.drive?.folder && normName(S.drive.folder.title)===normName(name)) return S.drive.folder;
+  if (S.drive?.folder){
+    if (normName(S.drive.folder.title)===normName(name)) return S.drive.folder;
+    if (await ask(`The client name "${name}" is different from the Drive folder you loaded from ("${S.drive.folder.title}"). Save into "${S.drive.folder.title}"?`, 'Use this folder', 'Find by name')) return S.drive.folder;
+  }
   if (!DRV.root) await driveClientList();
   if (!DRV.root) return null;
   const hit = findClient(name); if (hit) return hit;
@@ -1893,21 +1913,24 @@ $('btnDriveSave').onclick = async () => {
     const base = fileBase(), xTitle = base + '.xlsx', pTitle = base + '.pdf';
     const inFolder = await gdSearch(`parentId = ${qs(folder.id)}`);
     const oldX = inFolder.filter(f=>f.mimeType===MIME.xlsx || /\.xlsx$/i.test(f.title));
-    const samePdf = inFolder.filter(f=>f.title===pTitle);
     const added = S.policies.filter(p=>p._manual).length;
-    if (!await ask(`Save to Google Drive → ${ROOT_NAME} / ${folder.title}:\n\n• ${pTitle}\n• ${xTitle}${added?`\n  (includes ${added} policy(ies) you added in the app)`:''}\n\nBefore saving, please double-check the client name, figures and nominees.`, 'Save to Drive')) return;
+    const oldPdf = inFolder.filter(f=>f.mimeType===MIME.pdf);
+    const toHist = [...oldX, ...oldPdf];
+    if (!await ask(`Save to Google Drive → ${ROOT_NAME} / ${folder.title}:\n\n• ${pTitle}\n• ${xTitle}${added?`\n  (includes ${added} policy(ies) you added in the app)`:''}${toHist.length?`\n\nThe previous review (${toHist.map(f=>f.title).join(', ')}) will be moved into "${HIST_NAME}" in the same folder, so you keep a record of past reviews.`:''}\n\nBefore saving, please double-check the client name, figures and nominees.`, 'Save to Drive')) return;
     if (!window.jspdf || !window.html2canvas || !window.JSZip) return tell('The PDF / Excel tools could not load — please check your internet connection and reopen this page.');
     const xBlob = await styledXlsx();
     const pBlob = await buildPdf();
     hint.textContent = 'Uploading Excel…';  const xf = await upload(xTitle, xBlob, MIME.xlsx, folder.id);
     hint.textContent = 'Uploading PDF…';    const pf = await upload(pTitle, pBlob, MIME.pdf, folder.id);
-    const old = [...oldX, ...samePdf].filter(f=>f.id!==xf?.id && f.id!==pf?.id);
-    let trashed = 0;
-    if (old.length && await ask(`Saved. This folder still has the previous file(s):\n\n${old.map(f=>'• '+f.title).join('\n')}\n\nMove them to Google Drive trash so the new review replaces them? (You can restore from trash for 30 days.)`, 'Move to trash', 'Keep them')){
-      for (const f of old){ await gd('trash_file', {fileId:f.id}); trashed++; }
+    const old = toHist.filter(f=>f.id!==xf?.id && f.id!==pf?.id);
+    let moved = 0;
+    if (old.length){
+      hint.textContent = 'Moving the previous review into History…';
+      const h = await histFolder(folder, true);
+      for (const f of old){ await gd('update_file', {fileId:f.id, parentId:h.id}); moved++; }
     }
     S.drive = {folder, file:xf};
-    hint.innerHTML = `Saved to Drive: <a href="${esc(pf?.viewUrl||'#')}" target="_blank" rel="noopener">PDF</a> · <a href="${esc(xf?.viewUrl||'#')}" target="_blank" rel="noopener">Excel</a>${trashed?` · ${trashed} old file(s) moved to trash`:''}`;
+    hint.innerHTML = `Saved to Drive: <a href="${esc(pf?.viewUrl||'#')}" target="_blank" rel="noopener">PDF</a> · <a href="${esc(xf?.viewUrl||'#')}" target="_blank" rel="noopener">Excel</a>${moved?` · previous review kept in ${HIST_NAME}`:''}`;
     if (await ask('Update the Client Master List now so it links to this new review?', 'Update master list', 'Later')) await refreshMaster(true);
   } catch(e){ hint.textContent = ''; tell(e?.code==='too_big' ? e.message : driveErr(e) + '\n\nIf the upload may have gone through, check the client\'s folder before saving again.'); }
   finally { updateDriveButtons(); }
@@ -1923,6 +1946,8 @@ async function refreshMaster(confirmed){
   hint.textContent = 'Reading review files…';
   const files = await gdSearch(`title contains 'Policy' and (mimeType = ${qs(MIME.xlsx)} or mimeType = ${qs(MIME.pdf)})`);
   const by = {}; files.forEach(f => (by[f.parentId] = by[f.parentId] || []).push(f));
+  const hists = await gdSearch(`title = ${qs(HIST_NAME)} and mimeType = ${qs(MIME.folder)}`);
+  const histOf = {}; hists.forEach(h => histOf[h.parentId] = h.id);
   const notes = {};
   if (DRV.master){
     try {
@@ -1935,7 +1960,7 @@ async function refreshMaster(confirmed){
   }
   const cell = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : String(v);
   const link = (url, label) => url ? `=HYPERLINK("${url}","${label}")` : '';
-  const lines = [['No','Client 客户','Folder 文件夹','Review Excel 检视表','Report PDF 报告','Last review 上次检视','Next review 下次检视','Notes 备注']];
+  const lines = [['No','Client 客户','Folder 文件夹','Review Excel 检视表','Report PDF 报告','Last review 上次检视','Next review 下次检视','Reviews done 检视次数','First review 首次检视','Notes 备注']];
   DRV.clients.forEach((c, i) => {
     const fs = (by[c.id]||[]).sort(newestFirst);
     const x = fs.find(f=>f.mimeType===MIME.xlsx), pdf = fs.find(f=>f.mimeType===MIME.pdf);
@@ -1943,7 +1968,10 @@ async function refreshMaster(confirmed){
     const r = i + 2;
     lines.push([i+1, c.title, link(`https://drive.google.com/drive/folders/${c.id}`,'Open folder'),
       link(x && `https://drive.google.com/file/d/${x.id}/view`, 'Open Excel'), link(pdf && `https://drive.google.com/file/d/${pdf.id}/view`, 'Open PDF'),
-      last, `=IF(F${r}="","",EDATE(F${r},12))`, notes[normName(c.title)] || '']);
+      last, `=IF(F${r}="","",EDATE(F${r},12))`, ...(() => {
+        const dates = [...new Set([...fs, ...(by[histOf[c.id]]||[])].map(f=>dateInTitle(f.title) || String(f.modifiedTime||'').slice(0,10)).filter(Boolean))].sort();
+        return [dates.length || '', dates[0] || ''];
+      })(), notes[normName(c.title)] || '']);
   });
   hint.textContent = 'Writing master list…';
   const created = (await gd('create_file', {title:MASTER_NAME, parentId:DRV.root.id, contentMimeType:'text/csv', textContent:lines.map(l=>l.map(cell).join(',')).join('\n')})).payload;
