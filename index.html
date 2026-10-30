@@ -994,6 +994,7 @@ const MED_FIELDS = [
   {k:'deductibleBasis', en:'Deductible applies', zh:'自付额计算方式', t:'sel', opts:['','per policy year','per admission','per disability']},
   {k:'coins', en:'Co-payment / co-insurance (%)', zh:'共同付款 %', t:'num'},
   {k:'coinsCap', en:'Co-payment cap (RM per year)', zh:'共同付款上限/年', t:'num'},
+  {k:'coinsWhen', en:'Co-payment applies only when… (blank = always)', zh:'共同付款适用情况', t:'text'},
   {k:'cashless', en:'Cashless at panel hospitals (GL)', zh:'Panel 医院免付现', t:'sel', opts:['','Yes','No']},
   {k:'preHosp', en:'Pre-hospitalisation (days)', zh:'住院前 (天)', t:'num'},
   {k:'postHosp', en:'Post-hospitalisation (days)', zh:'出院后 (天)', t:'num'},
@@ -1094,13 +1095,15 @@ $('btnMedStop').onclick = () => medCtl?.abort();
 // The explainer page (same facts as the form; generic process steps; illustration clearly labelled)
 function medPage(key, m){
   const p = S.policies.find(x=>medKeyOf(x)===key) || {};
-  const li = (en, zh) => `<li>${en}<span class="zh">${zh}</span></li>`;
+  const li = (en, zh) => `<li>${en}${zh?`<span class="zh">${zh}</span>`:''}</li>`;
+  // free text typed in English only: no Chinese line that would just repeat it
+  const zhIf = (label, v) => /[一-鿿]/.test(v) ? `${label}：${esc(v)}` : '';
   const tiles = [
     ['Room & board / day', '房租/天', m.roomBoard!=null ? fmtRM(m.roomBoard) : null],
     ['Annual limit', '年度限额', m.annualLimit!=null ? fmtRM(m.annualLimit) : null],
     ['Lifetime limit', '终身限额', m.lifetimeLimit!=null ? (isNaN(+m.lifetimeLimit) ? esc(m.lifetimeLimit) : fmtRM(+m.lifetimeLimit)) : null],
     ['Deductible', '自付额', m.deductible!=null ? fmtRM(m.deductible) : null],
-    ['Co-payment', '共同付款', m.coins!=null ? `${m.coins}%` : null],
+    ['Co-payment', '共同付款', m.coins!=null ? `${m.coins}%${m.coinsWhen?'*':''}` : null],
   ].filter(t=>t[2]!=null);
   const pts = [];
   if (m.roomBoard!=null) pts.push(li(`<b>Room:</b> up to ${fmtRM(m.roomBoard)} per day. If you choose a more expensive room, you pay the difference, and some plans also reduce other claims in proportion — check your contract.`,
@@ -1111,12 +1114,12 @@ function medPage(key, m){
     : li(`<b>Lifetime cap:</b> ${isNaN(+m.lifetimeLimit)?esc(m.lifetimeLimit):fmtRM(+m.lifetimeLimit)} in total over the life of the plan.`, `终身限额：整个保障期间合计 ${isNaN(+m.lifetimeLimit)?esc(m.lifetimeLimit):fmtRM(+m.lifetimeLimit)}。`));
   if (m.deductible!=null) pts.push(li(`<b>Deductible:</b> you pay the first ${fmtRM(m.deductible)} of eligible bills ${m.deductibleBasis ? m.deductibleBasis : '(check whether per year or per admission)'} before the plan pays.`,
     `自付额：${m.deductibleBasis==='per policy year'?'每个保单年度':m.deductibleBasis==='per admission'?'每次住院':m.deductibleBasis==='per disability'?'每种病症':'(请确认按年或按次)'}先自付 ${fmtRM(m.deductible)}，之后才由保险赔。`));
-  if (m.coins!=null) pts.push(li(`<b>Co-payment:</b> you pay ${m.coins}% of the covered bill${m.coinsCap!=null?`, up to ${fmtRM(m.coinsCap)} a year`:''}. The plan pays the rest.`,
-    `共同付款：账单的 ${m.coins}% 由你支付${m.coinsCap!=null?`，每年最多 ${fmtRM(m.coinsCap)}`:''}，其余由保险支付。`));
+  if (m.coins!=null) pts.push(li(`<b>Co-payment${m.coinsWhen?'*':''}:</b> ${m.coinsWhen ? `only ${esc(m.coinsWhen)}, ` : ''}you pay ${m.coins}% of the covered bill${m.deductible!=null?' after the deductible':''}${m.coinsCap!=null?`, up to ${fmtRM(m.coinsCap)} a year`:''}. The plan pays the rest.`,
+    `共同付款：${m.coinsWhen ? `仅在 ${esc(m.coinsWhen)} 时，` : ''}${m.deductible!=null?'扣除自付额后，':''}账单的 ${m.coins}% 由你支付${m.coinsCap!=null?`，每年最多 ${fmtRM(m.coinsCap)}`:''}，其余由保险支付。`));
   if (m.preHosp!=null || m.postHosp!=null) pts.push(li(`<b>Before & after the stay:</b> doctor visits, tests and medicine ${m.preHosp!=null?`up to ${m.preHosp} days before`:''}${m.preHosp!=null&&m.postHosp!=null?' and ':''}${m.postHosp!=null?`up to ${m.postHosp} days after`:''} a hospital stay, for the same condition.`,
     `住院前后：同一病症${m.preHosp!=null?`住院前 ${m.preHosp} 天`:''}${m.preHosp!=null&&m.postHosp!=null?'及':''}${m.postHosp!=null?`出院后 ${m.postHosp} 天`:''}的门诊、检验和药物。`));
-  if (m.icu) pts.push(li(`<b>Intensive care:</b> ${esc(m.icu)}.`, `加护病房：${esc(m.icu)}。`));
-  if (m.outpatient) pts.push(li(`<b>Outpatient cancer / dialysis:</b> ${esc(m.outpatient)}.`, `门诊癌症 / 洗肾：${esc(m.outpatient)}。`));
+  if (m.icu) pts.push(li(`<b>Intensive care:</b> ${esc(m.icu)}.`, zhIf('加护病房', m.icu)));
+  if (m.outpatient) pts.push(li(`<b>Outpatient cancer / dialysis:</b> ${esc(m.outpatient)}.`, zhIf('门诊癌症 / 洗肾', m.outpatient)));
   if (m.hospIncome!=null) pts.push(li(`<b>Cash while in hospital:</b> you also receive ${fmtRM(m.hospIncome)} per day.`, `住院现金：每天另外得到 ${fmtRM(m.hospIncome)}。`));
   const steps = m.cashless==='Yes' ? [
     ['Go to a <b>panel hospital</b> and show your medical card and IC.', '到 Panel 医院，出示医药卡和身份证。'],
@@ -1128,18 +1131,21 @@ function medPage(key, m){
     ['Submit the claim to the insurer (check the claim deadline).', '向保险公司提交索赔 (注意申请期限)。'],
   ] : [];
   const good = [];
-  if (m.waiting) good.push(li(`<b>Waiting period:</b> ${esc(m.waiting)}. Illnesses that start during this period are not covered.`, `等待期：${esc(m.waiting)}。在等待期内发生的疾病不受保。`));
+  if (m.waiting) good.push(li(`<b>Waiting period:</b> ${esc(m.waiting)}. Illnesses that start during this period are not covered.`, (zhIf('等待期', m.waiting) || '等待期') + '：等待期内发生的疾病不受保。'.replace(/^：/, /[一-鿿]/.test(m.waiting)?'。':'：')));
   if (m.endAge!=null) good.push(li(`<b>Cover until age:</b> ${m.endAge}.`, `保障至：${m.endAge} 岁。`));
-  if (m.notCovered) good.push(li(`<b>Not covered:</b> ${esc(m.notCovered)}.`, `不保项目：${esc(m.notCovered)}。`));
-  if (m.notes) good.push(li(`<b>Also:</b> ${esc(m.notes)}.`, `其他：${esc(m.notes)}。`));
+  if (m.notCovered) good.push(li(`<b>Not covered:</b> ${esc(m.notCovered)}.`, zhIf('不保项目', m.notCovered)));
+  if (m.notes) good.push(li(`<b>Also:</b> ${esc(m.notes)}.`, zhIf('其他', m.notes)));
   // Illustration: whole bill eligible, within room & board, one admission
   let ex = '';
   if (m.exampleBill && (m.deductible!=null || m.coins!=null || m.annualLimit!=null)){
     const B = m.exampleBill, ded = Math.min(m.deductible||0, B), rest = B - ded;
-    const co = Math.min(rest * (m.coins||0)/100, m.coinsCap ?? Infinity);
-    const plan = Math.min(rest - co, m.annualLimit ?? Infinity), you = B - plan;
+    const calc = pct => { const co = Math.min(rest * pct/100, m.coinsCap ?? Infinity); const plan = Math.min(rest - co, m.annualLimit ?? Infinity); return {you: B - plan, plan}; };
+    const both = m.coins!=null && m.coinsWhen;
+    const cases = both ? [['Without co-payment', '无共同付款', calc(0)], ['With co-payment*', '有共同付款', calc(m.coins)]]
+                       : [['', '', calc(m.coins||0)]];
     ex = `<div class="sec"><h3>Example</h3><span class="zh">举例 (仅供参考)</span></div>
-      <div class="med-ex"><div>Hospital bill 医院账单<b>${fmtRM(B)}</b></div><div>You pay 你付<b>${fmtRM(you)}</b></div><div>Plan pays 保险付<b>${fmtRM(plan)}</b></div></div>
+      ${cases.map(([en,zh,r])=>`${en?`<div style="font-size:11.5px;font-weight:600;margin-top:6px">${en} <span class="zh" style="font-weight:400;color:var(--ink-2)">${zh}</span></div>`:''}
+      <div class="med-ex"><div>Hospital bill 医院账单<b>${fmtRM(B)}</b></div><div>You pay 你付<b>${fmtRM(r.you)}</b></div><div>Plan pays 保险付<b>${fmtRM(r.plan)}</b></div></div>`).join('')}
       <p class="muted" style="font-size:10.5px;margin:4px 0 0">Illustration only: assumes the whole bill is eligible, within the room & board limit, for one admission. Actual claims follow the policy contract. 仅供参考，实际以合约为准。</p>`;
   }
   return `<div class="page med-page">

@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT.parent / "policy-review-app"
-VERSION = "2026-10-30g"          # bump to make installed apps pick up a new version
+VERSION = "2026-10-30h"          # bump to make installed apps pick up a new version
 
 OUT.mkdir(exist_ok=True)
 (OUT / "icons").mkdir(exist_ok=True)
