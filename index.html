@@ -305,7 +305,9 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
     <h2><span class="step">6</span>Medical card explainer <span class="zh">医药卡说明（可选）</span></h2>
     <p class="muted" style="margin-top:0">Adds one page at the end of the report that explains a medical card rider in plain words. Fill in only what you know from the policy contract or benefit schedule — blanks are left out of the page, never guessed.
       <span class="zh">在报告最后加一页白话说明。只填合约或保障表上有的资料，空白的不会出现。</span></p>
-    <div class="row"><label>Policy 保单 <select id="medPolicy"></select></label></div>
+    <div class="row"><label>Policy 保单 <select id="medPolicy"></select></label>
+      <label>Plan 计划 <select id="medPlan"></select></label></div>
+    <div id="medPlanNote" class="notice" hidden></div>
     <div id="medAi" class="shot-box" hidden>
       <div class="row"><b>Fill with Claude 用 Claude 填写</b>
         <input type="file" id="medImg" accept="image/png,image/jpeg,image/webp" multiple>
@@ -314,7 +316,9 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
       <div id="medAiMsg" class="muted"></div>
     </div>
     <div class="grid2" id="medForm" style="margin-top:10px"></div>
-    <div class="row" style="margin-top:10px"><button class="primary" id="btnMedSave">Save explainer page…</button><span id="medSaved" class="muted"></span></div>
+    <div class="row" style="margin-top:10px"><button class="primary" id="btnMedSave">Save explainer page…</button>
+      <button id="btnMyPlan">Save as my plan 存为我的计划</button><button id="btnMyPlanDel" hidden>Delete my plan</button>
+      <span id="medSaved" class="muted"></span></div>
     <div id="medList"></div>
   </div>
 
@@ -1017,7 +1021,7 @@ function renderMed(){
   const sorted = [...pols].sort((a,b)=>((b.medLimit||b.roomBoard)?1:0)-((a.medLimit||a.roomBoard)?1:0));
   $('medPolicy').innerHTML = sorted.map(p=>`<option value="${esc(medKeyOf(p))}">${esc(pid(p))} · ${esc(p.plan||p.type||'')}${(p.medLimit||p.roomBoard)?' · medical':''}${S.medCards[medKeyOf(p)]?' ✓':''}</option>`).join('');
   if (cur && sorted.some(p=>medKeyOf(p)===cur)) $('medPolicy').value = cur;
-  loadMedForm();
+  loadMedForm(); autoPlan();
   $('medList').innerHTML = Object.keys(S.medCards).length ? `<div class="notice"><b>Explainer pages in the report 已加入说明页:</b><br>${Object.entries(S.medCards).map(([k,m])=>
     `${esc(k)} · ${esc(m.name||'')} <button data-medrm="${esc(k)}" style="padding:2px 8px;margin:2px 0 2px 6px">Remove</button>`).join('<br>')}</div>` : '';
   $('medList').querySelectorAll('[data-medrm]').forEach(b=>b.onclick=async()=>{
@@ -1037,7 +1041,87 @@ function loadMedForm(fill){
     return `<label>${esc(f.en)} <span class="zh">${f.zh}</span>${input}</label>`;
   }).join('');
 }
-$('medPolicy').onchange = () => loadMedForm();
+$('medPolicy').onchange = () => { loadMedForm(); autoPlan(); };
+function autoPlan(){
+  const p = S.policies.find(x=>medKeyOf(x)===$('medPolicy').value);
+  if (!p || S.medCards[medKeyOf(p)]) { renderPlanPicker(''); $('medPlanNote').hidden = true; return; }
+  const sug = suggestPlan(p); renderPlanPicker(sug); if (sug) applyPlan(sug); else $('medPlanNote').hidden = true;
+}
+/* Plan library: pick a plan and the explainer fills itself. Built-in plans use only Great Eastern's PUBLIC
+   documents; "my plans" are saved on this device only. Always check against the client's policy schedule. */
+const GMV_COMMON = {
+  roomBoard:200, lifetimeLimit:'No limit', deductibleBasis:'per policy year', coins:20, coinsCap:20000,
+  coinsWhen:'if there is no referral from a clinic on The Great Journey (TGJ) network before admission, or the clinic/hospital is not on the TGJ network',
+  preHosp:90, postHosp:200, icu:'As charged, up to 200 days a year',
+  outpatient:'Cancer treatment and kidney dialysis as charged', exampleBill:50000,
+};
+const GMV_NOTE = 'No deductible or co-payment for emergency treatment, government healthcare facilities, or follow-up outpatient cancer/dialysis. Room & board limit rises RM50 every 5 policy years (up to RM400). RM200 a day cash at a Malaysian government hospital (max 120 days a year)';
+const GMV_SRC = 'Great Eastern public brochure "GREAT MediValue" (May 2026)';
+const BUILTIN_PLANS = [
+  ...[[500,'500'],[2500,'2.5K'],[5000,'5K'],[20000,'20K']].map(([d,t])=>({id:'gmv-'+t, label:`GREAT MediValue 200-${t}`, src:GMV_SRC,
+     f:{...GMV_COMMON, name:`GREAT MediValue 200-${t}`, annualLimit:3000000, deductible:d,
+        waiting:'30 days; 120 days for specified illnesses',
+        notCovered:'Pre-existing illness, cosmetic treatment, dental (except injury), pregnancy and childbirth, congenital conditions, hazardous sports',
+        notes:GMV_NOTE}})),
+  {id:'gmv-20K-R', label:'GREAT MediValue 200-20K with Retirement Option', src:GMV_SRC,
+   f:{...GMV_COMMON, name:'GREAT MediValue 200-20K (Retirement Option)', annualLimit:3000000, deductible:20000,
+      waiting:'30 days; 120 days for specified illnesses',
+      notCovered:'Pre-existing illness, cosmetic treatment, dental (except injury), pregnancy and childbirth, congenital conditions, hazardous sports',
+      notes:GMV_NOTE + '. Retirement Option: can switch to a RM5,000 deductible at age 60 next birthday without further underwriting'}},
+  {id:'gmve-20K', label:'GREAT MediValue Exclusive 200-20K (Medic Guard)', src:'Great Eastern public "Appendix: GREAT MediValue Exclusive" and Medic Guard Campaign FAQ',
+   warn:'Annual limit differs between campaign versions in GE public documents (RM3,000,000 or RM500,000) — fill it in from the client\'s policy schedule.',
+   f:{...GMV_COMMON, name:'GREAT MediValue Exclusive-200-20K', annualLimit:null, deductible:20000,
+      waiting:'Waived under the campaign once the existing medical plan\'s waiting period has passed; otherwise 30 days, 120 days for specified illnesses',
+      notCovered:'Pre-existing illness (stricter rules for the 50 critical illnesses, spinal disorders and diabetes), cosmetic treatment, dental (except injury), pregnancy and childbirth, congenital conditions, hazardous sports',
+      notes:'If you also keep your existing medical plan, it pays first; for eligible conditions the deductible and co-payment here are treated as paid by it. ' + GMV_NOTE}},
+];
+const MYPLANS_KEY = 'prs-myplans-v1';
+const myPlans = { get(){ try { return JSON.parse(localStorage.getItem(MYPLANS_KEY)) || []; } catch(e){ return []; } },
+                  set(v){ try { localStorage.setItem(MYPLANS_KEY, JSON.stringify(v)); return true; } catch(e){ return false; } } };
+function renderPlanPicker(selected){
+  const mine = myPlans.get();
+  $('medPlan').innerHTML = `<option value="">— choose a plan to fill in 选择计划 —</option>
+    <optgroup label="Built-in (public brochures)">${BUILTIN_PLANS.map(x=>`<option value="b:${x.id}">${esc(x.label)}</option>`).join('')}</optgroup>
+    ${mine.length ? `<optgroup label="My saved plans 我的计划">${mine.map((x,i)=>`<option value="m:${i}">${esc(x.label)}</option>`).join('')}</optgroup>` : ''}`;
+  if (selected) $('medPlan').value = selected;
+  $('btnMyPlanDel').hidden = !String($('medPlan').value).startsWith('m:');
+}
+function applyPlan(val){
+  $('medPlanNote').hidden = true; $('medSaved').textContent = ''; $('btnMyPlanDel').hidden = !val.startsWith('m:');
+  if (!val) return;
+  const plan = val.startsWith('b:') ? BUILTIN_PLANS.find(x=>'b:'+x.id===val) : myPlans.get()[+val.slice(2)];
+  if (!plan) return;
+  loadMedForm({...plan.f});
+  $('medPlanNote').innerHTML = `Filled from <b>${esc(plan.label)}</b>${plan.src?` — source: ${esc(plan.src)}`:' (your saved plan)'}. ${plan.warn?`<b>${esc(plan.warn)}</b> `:''}Please check against the client's policy schedule — terms can differ by version or campaign. 请对照客户的保单资料核对。`;
+  $('medPlanNote').hidden = false;
+}
+$('medPlan').onchange = () => applyPlan($('medPlan').value);
+// suggest a plan from the policy's plan name / notes (e.g. "MEDIVALUE EXCLUSIVE-200-20K")
+function suggestPlan(p){
+  const t = `${p.plan||''} ${p.notes||''}`.toUpperCase();
+  if (!/MEDIVALUE/.test(t)) return '';
+  if (/EXCLUSIVE/.test(t)) return 'b:gmve-20K';
+  const m = t.match(/200-(20K-R|20K|5K|2\.5K|500)/);
+  return m ? 'b:gmv-' + (m[1]==='20K-R' ? '20K-R' : m[1]) : '';
+}
+$('btnMyPlan').onclick = async () => {
+  const f = readMedForm();
+  if (!f.name) return tell('Type the plan name in "Medical rider name" first — it becomes the name of your saved plan.');
+  const mine = myPlans.get(), i = mine.findIndex(x=>x.label===f.name);
+  if (i>=0 && !await ask(`Replace your saved plan "${f.name}" with these details?`)) return;
+  const clean = {...f};
+  if (i>=0) mine[i] = {label:f.name, f:clean}; else mine.push({label:f.name, f:clean});
+  if (!myPlans.set(mine)) return tell('This browser could not save the plan (private mode?).');
+  renderPlanPicker('m:' + (i>=0 ? i : mine.length-1));
+  $('medSaved').textContent = `Saved "${f.name}" on this device. Next time just pick it from Plan.`;
+};
+$('btnMyPlanDel').onclick = async () => {
+  const val = $('medPlan').value; if (!val.startsWith('m:')) return;
+  const mine = myPlans.get(), x = mine[+val.slice(2)];
+  if (!x || !await ask(`Delete your saved plan "${x.label}" from this device?`)) return;
+  mine.splice(+val.slice(2), 1); myPlans.set(mine); renderPlanPicker(''); $('medPlanNote').hidden = true;
+};
+
 function readMedForm(){
   const m = {};
   MED_FIELDS.forEach(f=>{ const el = $('med_'+f.k); const v = el.value.trim(); if (v!=='') m[f.k] = f.t==='num' ? +v : v; });
