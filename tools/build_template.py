@@ -151,6 +151,38 @@ def build_client(wb, blank=False):
         c.number_format = "#,##0"
         ws.cell(r, 3, note).font = Font(italic=True, color="7A6A8C")
         r += 1
+    # Contact (rows 25-26) and family members (header row 30, people from row 31) - for follow-up, not shown on the report
+    r += 1
+    ws.cell(r, 1, "Contact  联络资料").font = Font(bold=True, size=12, color=PINK)
+    r += 1
+    for label, fmt, note in (("Phone  电话", "@", "Not shown on the client report"), ("Date of birth  生日", "dd/mm/yyyy", "")):
+        ws.cell(r, 1, label).font = Font(bold=True)
+        c = ws.cell(r, 2)
+        c.fill = lilac_fill
+        c.border = BOX
+        c.number_format = fmt
+        ws.cell(r, 3, note).font = Font(italic=True, color="7A6A8C")
+        r += 1
+    r += 2
+    ws.cell(r, 1, "Family members  家人").font = Font(bold=True, size=12, color=PINK)
+    ws.cell(r, 3, "For birthdays and follow-up. Not shown on the client report.").font = Font(italic=True, color="7A6A8C")
+    r += 1
+    for j, h in enumerate(("Name  姓名", "Relationship  关系", "Birthday  生日", "Phone  电话", "Notes  备注"), 1):
+        c = ws.cell(r, j, h)
+        c.font = hdr_font
+        c.fill = hdr_fill
+    ws.column_dimensions["D"].width = 18
+    ws.column_dimensions["E"].width = 30
+    rel = DataValidation(type="list", formula1='"Spouse 配偶,Son 儿子,Daughter 女儿,Father 父亲,Mother 母亲,Brother 兄弟,Sister 姐妹,Other 其他"', allow_blank=True)
+    rel.showErrorMessage = False
+    ws.add_data_validation(rel)
+    for rr in range(r + 1, r + 16):
+        for j in range(1, 6):
+            c = ws.cell(rr, j)
+            c.border = BOX
+            c.number_format = "dd/mm/yyyy" if j == 3 else "@" if j == 4 else "General"
+        rel.add(f"B{rr}")
+    assert r == 30, r
     return ws
 
 
