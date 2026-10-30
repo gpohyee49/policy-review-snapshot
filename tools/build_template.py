@@ -176,10 +176,19 @@ def build_policies(wb, blank=False):
                 cell.number_format = "dd/mm/yyyy"
             elif isinstance(v, (int, float)):
                 cell.number_format = "#,##0"
+    date_cols = {"H", "I"}
+    num_cols = {"J", "L", "M", "N", "O", "P", "Q", "R", "Y"}
     for r in range(2, 101):
+        for c in range(1, len(POLICY_COLS) + 1):
+            cell = ws.cell(r, c)
+            cell.border = BOX
+            if cell.column_letter in date_cols:
+                cell.number_format = "dd/mm/yyyy"
+            elif cell.column_letter in num_cols:
+                cell.number_format = "#,##0"
         # VALUE() tolerates text like "1800"; text with "RM" shows as 0 until cleaned — the browser app cleans it for you.
         ws.cell(r, helper, f'=IF(J{r}="","",IFERROR(VALUE(SUBSTITUTE(SUBSTITUTE(J{r},"RM",""),",",""))*'
-                           f'IFERROR(INDEX({{12,4,2,1,1}},MATCH(K{r},{{"Monthly","Quarterly","Half-yearly","Yearly","Single"}},0)),0),0))')
+                           f'IFERROR(INDEX({{12,4,2,1,0}},MATCH(K{r},{{"Monthly","Quarterly","Half-yearly","Yearly","Single"}},0)),0),0))')
         ws.cell(r, helper).number_format = "#,##0"
 
     def dv(col, items):
@@ -208,7 +217,7 @@ def build_policies(wb, blank=False):
 
 def build_dashboard(wb):
     ws = wb.create_sheet("Dashboard", 0)
-    title(ws, "Policy Review Snapshot  保单检视摘要", "Auto-calculated from 'Client' and 'Policies'. Only INFORCE policies count toward coverage.")
+    title(ws, "Policy Review Snapshot  保单检视摘要", "Auto-calculated from 'Client' and 'Policies'. Inforce and paid-up policies count toward coverage.")
     for col, w in zip("ABCDEF", (34, 18, 18, 18, 16, 4)):
         ws.column_dimensions[col].width = w
     ws["A3"] = "Client 客户:"
@@ -227,14 +236,17 @@ def build_dashboard(wb):
         c.border = BOX
         c.alignment = Alignment(horizontal="center", wrap_text=True)
     inf = 'Policies!$G$2:$G$100,"Inforce"'
+    pu = 'Policies!$G$2:$G$100,"Paid-up"'
+    SUM = lambda col: f"SUMIFS(Policies!${col}$2:${col}$100,{inf})+SUMIFS(Policies!${col}$2:${col}$100,{pu})"
+    MAX = lambda col: f"MAX(_xlfn.MAXIFS(Policies!${col}$2:${col}$100,{inf}),_xlfn.MAXIFS(Policies!${col}$2:${col}$100,{pu}))"
     rows = [
-        ("Life / Death  身故", f"=SUMIFS(Policies!$L$2:$L$100,{inf})", "=Client!B12"),
-        ("TPD  完全永久残疾", f"=SUMIFS(Policies!$M$2:$M$100,{inf})", "=Client!B13"),
-        ("Critical Illness  严重疾病", f"=SUMIFS(Policies!$N$2:$N$100,{inf})", "=Client!B14"),
-        ("Retirement fund (plans + EPF + PRS)  退休金", f"=SUMIFS(Policies!$Y$2:$Y$100,{inf})+N(Client!B21)+N(Client!B22)", "=Client!B15"),
-        ("Medical annual limit (highest)  医药年限", f"=_xlfn.MAXIFS(Policies!$P$2:$P$100,{inf})", "=Client!B16"),
-        ("Room & board (RM/day)  房租", f"=_xlfn.MAXIFS(Policies!$Q$2:$Q$100,{inf})", "=Client!B17"),
-        ("Personal Accident  意外", f"=SUMIFS(Policies!$R$2:$R$100,{inf})", None),
+        ("Life / Death  身故", f"={SUM('L')}", "=Client!B12"),
+        ("TPD  完全永久残疾", f"={SUM('M')}", "=Client!B13"),
+        ("Critical Illness  严重疾病", f"={SUM('N')}", "=Client!B14"),
+        ("Retirement fund (plans + EPF + PRS)  退休金", f"={SUM('Y')}+N(Client!B21)+N(Client!B22)", "=Client!B15"),
+        ("Medical annual limit (highest)  医药年限", f"={MAX('P')}", "=Client!B16"),
+        ("Room & board (RM/day)  房租", f"={MAX('Q')}", "=Client!B17"),
+        ("Personal Accident  意外", f"={SUM('R')}", None),
     ]
     for r, (label, existing, target) in enumerate(rows, 6):
         ws.cell(r, 1, label).font = Font(bold=True)
@@ -257,7 +269,7 @@ def build_dashboard(wb):
     ws["A14"] = "Premium  保费"
     ws["A14"].font = Font(bold=True, size=12, color=PINK)
     prem = [
-        ("Total annual premium (inforce)  年缴总保费", f"=SUMIFS(Policies!$Z$2:$Z$100,{inf})"),
+        ("Total annual premium (inforce + paid-up)  年缴总保费", f"={SUM('Z')}"),
         ("Monthly equivalent  每月相当于", "=B15/12"),
         ("% of annual income  占年收入", "=IF(Client!B6>0,B15/Client!B6,0)"),
         ("Premium budget  保费预算", "=Client!B18"),
@@ -271,9 +283,9 @@ def build_dashboard(wb):
     ws["A20"] = "Housekeeping  资料检查"
     ws["A20"].font = Font(bold=True, size=12, color=PINK)
     hk = [
-        ("Inforce policies  有效保单", f"=COUNTIFS({inf})"),
+        ("Inforce / paid-up policies  有效保单", f"=COUNTIFS({inf})+COUNTIFS({pu})"),
         ("Not inforce (excluded)  非有效保单", '=COUNTA(Policies!$A$2:$A$100)-B21'),
-        ("Inforce without nominee  未提名", f'=COUNTIFS({inf},Policies!$T$2:$T$100,"",Policies!$A$2:$A$100,"<>")'),
+        ("Inforce without nominee  未提名", f'=COUNTIFS({inf},Policies!$T$2:$T$100,"",Policies!$A$2:$A$100,"<>")+COUNTIFS({pu},Policies!$T$2:$T$100,"",Policies!$A$2:$A$100,"<>")'),
     ]
     for r, (label, f) in enumerate(hk, 21):
         ws.cell(r, 1, label).font = Font(bold=True)
@@ -284,18 +296,33 @@ def build_dashboard(wb):
     chart.title = "Existing vs review standard (RM)"
     chart.style = 10
     chart.y_axis.numFmt = "#,##0"
+    chart.x_axis.delete = False          # show category labels (hidden by default)
+    chart.y_axis.delete = False          # show the RM scale
+    chart.legend.position = "r"
     chart.add_data(Reference(ws, min_col=2, min_row=5, max_col=3, max_row=9), titles_from_data=True)
     chart.set_categories(Reference(ws, min_col=1, min_row=6, max_row=9))
     chart.series[0].graphicalProperties.solidFill = PURPLE
     chart.series[1].graphicalProperties.solidFill = "E9B8D0"
-    chart.height, chart.width = 7.5, 16
+    chart.height, chart.width = 9, 18
     ws.add_chart(chart, "A25")
 
-    ws["A41"] = ("Disclaimer: Summary based on policy information provided as at review date. Benefits are subject to the "
+    ws["A44"] = ("Disclaimer: Summary based on policy information provided as at review date. Benefits are subject to the "
                  "terms of each policy contract. Review standards are planning benchmarks, not recommendations or official figures.")
-    ws["A41"].font = Font(italic=True, size=9, color="7A6A8C")
-    ws["A41"].alignment = Alignment(wrap_text=True)
-    ws.merge_cells("A41:E43")
+    ws["A44"].font = Font(italic=True, size=9, color="7A6A8C")
+    ws["A44"].alignment = Alignment(wrap_text=True)
+    ws.merge_cells("A44:E46")
+
+
+def build_notes(wb):
+    ws = wb.create_sheet("Review notes")
+    title(ws, "Review notes  检视记录", "Filled by the app: areas to discuss, data checks and the change log.")
+    for col, w in zip("ABCDE", (22, 60, 18, 26, 30)):
+        ws.column_dimensions[col].width = w
+    for r in range(4, 201):
+        for c in range(1, 6):
+            cell = ws.cell(r, c)
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+    ws.sheet_properties.tabColor = "8A63C2"
 
 
 def build_guide(wb, blank=False):
@@ -325,7 +352,9 @@ def build(out, blank=False):
     build_dashboard(wb)
     build_client(wb, blank)
     build_policies(wb, blank)
+    build_notes(wb)
     build_guide(wb, blank)
+    wb.calculation.fullCalcOnLoad = True      # Excel recalculates the Dashboard when the file opens
     lists = wb.create_sheet("Lists")
     lists["A1"] = "Insurer (Malaysia life & family takaful)"
     for r, name in enumerate(INSURERS, 2):
