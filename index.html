@@ -231,7 +231,7 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
 .fam-box{margin:12px 0 4px;padding:10px 12px;border:1px dashed var(--line);border-radius:10px;background:var(--paper,#fff)}
 .fam input,.fam select{width:100%;min-width:90px;font:inherit;padding:4px 6px}
 .fam td{padding:3px}
-.nomt input{width:100%;min-width:80px;font:inherit;padding:4px 6px}
+.nomt input,.nomt select{width:100%;min-width:80px;font:inherit;padding:4px 6px}
 .nomt td{padding:3px;vertical-align:top}
 .nom-alerts{margin-top:8px}
 .nom-alerts li{margin:2px 0}
@@ -1022,7 +1022,7 @@ const ADD_REQ = ['insurer','policyNo','status','premium','mode'];
 function renderAddForm(){
   $('addForm').innerHTML = ADD_FIELDS.map(k=>{
     const f = FIELD[k], req = ADD_REQ.includes(k) ? ' *' : '';
-    const list = f.kind==='status' ? STATUSES : f.kind==='mode' ? MODES : k==='type' ? TYPES : k==='purpose' ? PURPOSES.map(o=>o.label) : f.kind==='trust' ? TRUST_OPTS : null;
+    const list = f.kind==='status' ? STATUSES : f.kind==='mode' ? MODES : k==='type' ? TYPES : k==='purpose' ? PURPOSES.map(o=>o.label) : f.kind==='trust' ? TRUST_OPTS : k==='nomType' ? ['Trust','Hibah','Beneficiary','Executor','Not sure'] : null;
     const input = k==='insurer'
       ? `<input data-add="insurer" list="insurerList" placeholder="Choose or type 选择或输入">`
       : list
@@ -1148,6 +1148,12 @@ function setPolicyField(p, key, v, label){
   S.changeLog.push({when:new Date().toLocaleString('en-MY'), policy:pid(p), field:label, from, to:v||'(blank)'});
   return true;
 }
+const NOM_TYPE_OPTS = [['Trust','Trust 信托'],['Hibah','Hibah'],['Beneficiary','Beneficiary 受益人'],['Executor','Executor 执行人'],['Not sure','Not sure 待确认']];
+// dropdown; a value from the file that is not in the list is kept as its own option
+function nomTypeSelect(attrs, cur){
+  const v = String(cur??'').trim(), known = NOM_TYPE_OPTS.some(([o])=>o.toLowerCase()===v.toLowerCase());
+  return `<select ${attrs}><option value="">— choose 选择 —</option>${NOM_TYPE_OPTS.map(([o,l])=>`<option value="${o}" ${o.toLowerCase()===v.toLowerCase()?'selected':''}>${l}</option>`).join('')}${v && !known ? `<option value="${esc(v)}" selected>${esc(v)} (from file)</option>` : ''}</select>`;
+}
 function renderNominees(){
   const known = [...new Set([...persons(), nameKey(S.client.name), ...(S.client.family||[]).map(f=>nameKey(f.name))].filter(k=>k && !k.startsWith('(')))];
   $('personList').innerHTML = known.map(k=>`<option value="${esc(k)}">`).join('');
@@ -1155,9 +1161,10 @@ function renderNominees(){
   $('nomTable').innerHTML = `<tr><th>Policy</th><th>Death 身故</th>${cols.map(c=>`<th>${c[1]}</th>`).join('')}<th>Payout goes to 赔偿去向</th></tr>` +
     S.policies.map((p,i)=>`<tr><td>${esc(pid(p))}<div class="muted">${esc(p.plan||p.type||'')}${isInforce(p)?'':' · '+esc(p.status||'')}</div></td>
       <td class="n">${p.death ? fmtShort(p.death) : '–'}</td>
-      ${cols.map(([k,,list])=>`<td><input data-nom="${i}" data-k="${k}" value="${esc(p[k]??'')}" ${list?`list="${list}"`:''} ${k==='nomShare'?'placeholder="e.g. 50; 50"':''}></td>`).join('')}
+      ${cols.map(([k,,list])=>`<td>${k==='nomType' ? nomTypeSelect(`data-nom="${i}" data-k="${k}"`, p[k])
+        : `<input data-nom="${i}" data-k="${k}" value="${esc(p[k]??'')}" ${list?`list="${list}"`:''} ${k==='nomShare'?'placeholder="e.g. 50; 50"':''}>`}</td>`).join('')}
       <td>${routeChip(payoutRoute(p))}</td></tr>`).join('');
-  $('nomTable').querySelectorAll('input[data-nom]').forEach(inp=>inp.onchange=()=>{
+  $('nomTable').querySelectorAll('[data-nom]').forEach(inp=>inp.onchange=()=>{
     const p = S.policies[+inp.dataset.nom], k = inp.dataset.k, v = inp.value.trim();
     if (!setPolicyField(p, k, k==='lifeAssured' ? nameKey(v) : v, FIELD[k].label)) return;
     renderChangeLog(); renderNominees(); renderReportFor(); if (S.generated) generate({quiet:true});
