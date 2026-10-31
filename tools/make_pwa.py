@@ -4,13 +4,15 @@ Run:  python tools/make_pwa.py
 Output folder: ../policy-review-app  (its own git repo; only app files, template and the fictional sample —
 never real-test/ or any client data).
 """
+import hashlib
 import shutil
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT.parent / "policy-review-app"
-VERSION = "2026-10-30j"          # bump to make installed apps pick up a new version
+# Version = fingerprint of the app file: every change gives a new sw.js, so installed apps update by themselves
+VERSION = hashlib.sha1((ROOT / "Policy Review Snapshot.html").read_bytes()).hexdigest()[:10]
 
 OUT.mkdir(exist_ok=True)
 (OUT / "icons").mkdir(exist_ok=True)
@@ -29,7 +31,13 @@ assert html.count("<title>Policy Review Snapshot</title>\n") == 1
 html = html.replace("<title>Policy Review Snapshot</title>\n", "<title>Policy Review Snapshot</title>\n" + head_add)
 sw_reg = """<script>
 /* Installable app: cache the app so it opens offline after the first visit */
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  const hadSw = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).then(reg => reg.update()).catch(() => {});
+  // a new version took over: reload once so the new app shows straight away
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadSw && !reloaded) { reloaded = true; location.reload(); } });
+}
 </script>
 </body>"""
 # Installable build: lock screen visible from the first paint (the script then asks to set or enter the PIN)
@@ -37,6 +45,11 @@ assert html.count('<div id="lock" class="lock" hidden>') == 1
 html = html.replace('<div id="lock" class="lock" hidden>', '<div id="lock" class="lock">')
 assert html.count("</body>") == 1
 html = html.replace("</body>", sw_reg)
+# small version label so you can tell which version is open
+from datetime import date
+tag = "then hand them a report to keep.</p>"
+assert html.count(tag) == 1
+html = html.replace(tag, tag[:-4] + f' <small style="opacity:.7">· version {date.today():%d/%m/%Y} ({VERSION[:6]})</small></p>')
 (OUT / "index.html").write_text(html, encoding="utf-8")
 
 # ---- manifest
@@ -69,6 +82,14 @@ self.addEventListener('activate', e => e.waitUntil(
   caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', e => {{
   if (e.request.method !== 'GET') return;
+  // the app page itself: network first so a new version shows at once; the cached copy is used offline
+  if (e.request.mode === 'navigate') {{
+    e.respondWith(fetch(e.request).then(res => {{
+      if (res.ok) caches.open(CACHE).then(c => c.put('index.html', res.clone()));
+      return res;
+    }}).catch(() => caches.match('index.html').then(hit => hit || caches.match('./'))));
+    return;
+  }}
   e.respondWith(caches.match(e.request).then(hit => {{
     const net = fetch(e.request).then(res => {{
       if (res.ok || res.type === 'opaque') caches.open(CACHE).then(c => c.put(e.request, res.clone()));

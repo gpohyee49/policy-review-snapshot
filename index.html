@@ -264,7 +264,7 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
       <button id="btnChangePin" class="install" hidden>Change PIN 改密码</button>
     </span>
   </div>
-  <p>See a client's existing cover, premium, nominees and purpose on one page, then hand them a report to keep.</p>
+  <p>See a client's existing cover, premium, nominees and purpose on one page, then hand them a report to keep. <small style="opacity:.7">· version 31/10/2026 (248ba2)</small></p>
   <div id="iosTip" class="ios-tip" hidden>To install on iPhone: tap <b>Share</b> <span aria-hidden="true">⎋</span> then <b>Add to Home Screen</b>. 安装到 iPhone：点<b>分享</b>，再选<b>添加到主屏幕</b>。 <button id="iosTipClose" aria-label="Close">✕</button></div>
 </div>
 
@@ -2453,7 +2453,13 @@ if (_tp) (async () => {
 </script>
 <script>
 /* Installable app: cache the app so it opens offline after the first visit */
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  const hadSw = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).then(reg => reg.update()).catch(() => {});
+  // a new version took over: reload once so the new app shows straight away
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadSw && !reloaded) { reloaded = true; location.reload(); } });
+}
 </script>
 </body>
 </html>
