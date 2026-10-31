@@ -37,7 +37,7 @@ POLICY_COLS = [
     ("Room & Board (RM/day)", 13), ("Personal Accident (RM)", 14),
     ("Waiver of Premium", 11), ("Nominee Name", 22), ("Nominee Relationship", 14),
     ("Nomination Type", 14), ("Purpose", 30), ("Notes", 28), ("Retirement Fund (RM)", 15),
-    ("Trust Created", 12), ("Nominee Share (%)", 14),
+    ("Trust Created", 12), ("Nominee Share (%)", 14), ("Show in Report", 12),
 ]
 # Annual-premium helper column sits right after the input columns
 from openpyxl.utils import get_column_letter
@@ -238,6 +238,7 @@ def build_policies(wb, blank=False):
     dv("S", "Yes,No")
     dv("V", NOMTYPES)
     dv("Z", "Yes,No,Not sure")
+    dv("AB", "Yes,No")
     # Purpose: suggested list, but any other text is allowed (no error popup)
     pur = DataValidation(type="list", formula1=f'"{PURPOSES}"', allow_blank=True, showErrorMessage=False)
     ws.add_data_validation(pur)
