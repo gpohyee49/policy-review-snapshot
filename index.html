@@ -1161,7 +1161,8 @@ function renderNominees(){
   $('nomTable').innerHTML = `<tr><th>Policy</th><th>Death 身故</th>${cols.map(c=>`<th>${c[1]}</th>`).join('')}<th>Payout goes to 赔偿去向</th></tr>` +
     S.policies.map((p,i)=>`<tr><td>${esc(pid(p))}<div class="muted">${esc(p.plan||p.type||'')}${isInforce(p)?'':' · '+esc(p.status||'')}</div></td>
       <td class="n">${p.death ? fmtShort(p.death) : '–'}</td>
-      ${cols.map(([k,,list])=>`<td>${k==='nomType' ? nomTypeSelect(`data-nom="${i}" data-k="${k}"`, p[k])
+      ${cols.map(([k,,list])=>`<td>${k==='nomType' && p.trust==='Yes' ? '<span class="route good" title="Trust created = Yes">✔ Trust 信托<br><span style="font-size:10px">Trust created = Yes</span></span>'
+        : k==='nomType' ? nomTypeSelect(`data-nom="${i}" data-k="${k}"`, p[k])
         : `<input data-nom="${i}" data-k="${k}" value="${esc(p[k]??'')}" ${list?`list="${list}"`:''} ${k==='nomShare'?'placeholder="e.g. 50; 50"':''}>`}</td>`).join('')}
       <td>${routeChip(payoutRoute(p))}</td></tr>`).join('');
   $('nomTable').querySelectorAll('[data-nom]').forEach(inp=>inp.onchange=()=>{
@@ -1647,7 +1648,7 @@ function coverageRow(a){
 function policyCard(p, sm){
   const covers = FIELDS.filter(f=>f.cov && p[f.key]>0).map(f=>`<dt>${f.label.replace(/ \(RM.*\)/,'')}</dt><dd>${fmtRM(p[f.key])}${f.key==='roomBoard'?'/day':''}</dd>`).join('');
   const ns = nominees(p);
-  const nom = ns.length ? ns.map(n=>`${esc(n.name)}${n.rel?` (${esc(n.rel)})`:''}${ns.length>1?` ${+n.share.toFixed(1)}%${n.shareGiven?'':'*'}`:''}`).join('<br>') + (p.nomType?` <span class="muted">· ${esc(p.nomType)}</span>`:'')
+  const nom = ns.length ? ns.map(n=>`${esc(n.name)}${n.rel?` (${esc(n.rel)})`:''}${ns.length>1?` ${+n.share.toFixed(1)}%${n.shareGiven?'':'*'}`:''}`).join('<br>') + (p.trust==='Yes' ? ' <span class="muted">· Trust</span>' : p.nomType?` <span class="muted">· ${esc(p.nomType)}</span>`:'')
     : `<span class="chip ${isInforce(p)&&(p.death>0||p.tpd>0)?'bad':'na'}">Not recorded 未记录</span>`;
   const st = isInforce(p) ? 'good' : p.status==='Lapsed' ? 'bad' : 'na';
   return `<div class="pcard ${isInforce(p)?'':'excluded'}">
