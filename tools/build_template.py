@@ -43,9 +43,11 @@ POLICY_COLS = [
 from openpyxl.utils import get_column_letter
 HELPER = get_column_letter(len(POLICY_COLS) + 1)
 TYPES = "Whole Life,Term Life,Investment-Linked,Medical,Critical Illness,Personal Accident,Endowment / Savings,Other"
-STATUSES = "Inforce,Lapsed,Paid-up,Surrendered,Matured"
+STATUSES = "Inforce,Lapsed,Paid-up,Surrendered,Matured,Terminated,Withdrawn"
 MODES = "Monthly,Quarterly,Half-yearly,Yearly,Single"
-NOMTYPES = "Beneficiary,Hibah,Trustee,Conditional Hibah,None"
+NOMTYPES = "Trust,Hibah,Beneficiary,Executor,Not sure"           # same choices as the app
+RELS = "Spouse,Husband,Wife,Son,Daughter,Father,Mother,Brother,Sister,Grandchild,Other"
+DISC = "D,I,S,C"
 # Malaysian life insurers and family takaful operators (BNM FSP directory / PIDM insurer members, checked Oct 2026)
 INSURERS = ["AIA", "Allianz Life", "AmMetLife", "Etiqa Life", "FWD Insurance", "Generali Life", "Great Eastern Life",
             "Hong Leong Assurance", "Manulife", "MCIS", "Prudential Assurance", "Sun Life Malaysia", "Tokio Marine Life",
@@ -128,6 +130,16 @@ def build_client(wb, blank=False):
         elif label.endswith("(RM)"):
             c.number_format = "#,##0"
         r += 1
+    # row 10: report style for the app (blank = standard); not shown on the report
+    ws.cell(r, 1, "Report style (DISC)").font = Font(bold=True)
+    c = ws.cell(r, 2)
+    c.fill = lilac_fill
+    c.border = BOX
+    ws.cell(r, 3, "Blank = standard; D, I, S or C changes the report layout").font = Font(italic=True, color="7A6A8C")
+    disc = DataValidation(type="list", formula1=f'"{DISC}"', allow_blank=True)
+    ws.add_data_validation(disc)
+    disc.add(f"B{r}")
+    assert r == 10, r
     r += 1
     ws.cell(r, 1, "Review standard  检视标准").font = Font(bold=True, size=12, color=PINK)
     r += 1
@@ -237,6 +249,7 @@ def build_policies(wb, blank=False):
     dv("G", STATUSES)
     dv("K", MODES)
     dv("S", "Yes,No")
+    dv("U", RELS)
     dv("V", NOMTYPES)
     dv("Z", "Yes,No,Not sure")
     dv("AB", "Yes,No")
