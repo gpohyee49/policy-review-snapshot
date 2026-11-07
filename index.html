@@ -264,7 +264,7 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
       <button id="btnChangePin" class="install" hidden>Change PIN 改密码</button>
     </span>
   </div>
-  <p>See a client's existing cover, premium, nominees and purpose on one page, then hand them a report to keep. <small style="opacity:.7">· version 31/10/2026 (248ba2)</small></p>
+  <p>See a client's existing cover, premium, nominees and purpose on one page, then hand them a report to keep. <small style="opacity:.7">· version 07/11/2026 (e6f1fb)</small></p>
   <div id="iosTip" class="ios-tip" hidden>To install on iPhone: tap <b>Share</b> <span aria-hidden="true">⎋</span> then <b>Add to Home Screen</b>. 安装到 iPhone：点<b>分享</b>，再选<b>添加到主屏幕</b>。 <button id="iosTipClose" aria-label="Close">✕</button></div>
 </div>
 
@@ -291,7 +291,7 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
         <button class="primary" id="btnDriveLoad">Load latest review 载入最新检视</button>
         <a id="driveFolder" target="_blank" rel="noopener" hidden>Open folder ↗</a></div>
       <datalist id="driveClients"></datalist>
-      <div id="driveMsg" class="muted" style="margin-top:6px">Reads your "Client Policy Review" folder. Nothing is changed until you choose Save to Drive.</div>
+      <div id="driveMsg" class="muted" style="margin-top:6px">Reads your "Great Eastern Client Data" folder. Nothing is changed until you choose Save to Drive.</div>
     </div>
     <div class="shot-box" id="shotBox">
       <div class="row">
@@ -2115,9 +2115,9 @@ TABS.forEach(t => t.cards.forEach(id => tabObs.observe($(id), {attributes:true, 
 renderTabs();
 
 /* ================= Google Drive (claude.ai version only, through the viewer's own Google Drive connector) =================
-   Folder layout: "Client Policy Review" / <letter> / <CLIENT NAME> / review files.
+   Folder layout: "Great Eastern Client Data" (formerly "Client Policy Review") / <letter> / <CLIENT NAME> / review files.
    Reading is free; every change (upload, moving old files to trash, new master list) is confirmed first. */
-const GD = 'Google Drive', ROOT_NAME = 'Client Policy Review', MASTER_NAME = 'Client Master List 客户总表', HIST_NAME = 'History 历史记录';
+const GD = 'Google Drive', ROOT_NAME = 'Great Eastern Client Data', OLD_ROOT_NAME = 'Client Policy Review', MASTER_NAME = 'Client Master List 客户总表', HIST_NAME = 'History 历史记录';
 const MIME = {folder:'application/vnd.google-apps.folder', xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pdf:'application/pdf', sheet:'application/vnd.google-apps.spreadsheet'};
 const DRV = {mcp:null, root:null, letters:[], clients:[], master:null, fileArgs:false};
 const qs = v => `'${String(v).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}'`;
@@ -2168,7 +2168,8 @@ async function driveClientList(){
   const msg = $('driveMsg');
   $('btnDriveList').disabled = true; msg.textContent = 'Reading your client folders…';
   try {
-    const roots = (await gdSearch(`title = ${qs(ROOT_NAME)} and mimeType = ${qs(MIME.folder)}`)).filter(f=>!f.trashed);
+    const roots = (await gdSearch(`(title = ${qs(ROOT_NAME)} or title = ${qs(OLD_ROOT_NAME)}) and mimeType = ${qs(MIME.folder)}`)).filter(f=>!f.trashed)
+      .sort((a,b)=>(a.title===ROOT_NAME?0:1)-(b.title===ROOT_NAME?0:1));
     if (!roots.length){ msg.textContent = `No folder named "${ROOT_NAME}" found in your Google Drive.`; return; }
     DRV.root = roots.find(f=>f.owner && f.parentId) || roots[0];
     DRV.letters = await gdSearch(`parentId = ${qs(DRV.root.id)} and mimeType = ${qs(MIME.folder)}`);
