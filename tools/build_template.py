@@ -38,6 +38,7 @@ POLICY_COLS = [
     ("Waiver of Premium", 11), ("Nominee Name", 22), ("Nominee Relationship", 14),
     ("Nomination Type", 14), ("Purpose", 30), ("Notes", 28), ("Retirement Fund (RM)", 15),
     ("Trust Created", 12), ("Nominee Share (%)", 14), ("Show in Report", 12),
+    ("Cash Value (RM)", 15),
 ]
 # Annual-premium helper column sits right after the input columns
 from openpyxl.utils import get_column_letter
@@ -227,7 +228,7 @@ def build_policies(wb, blank=False):
             elif isinstance(v, (int, float)):
                 cell.number_format = "#,##0"
     date_cols = {"H", "I"}
-    num_cols = {"J", "L", "M", "N", "O", "P", "Q", "R", "Y"}
+    num_cols = {"J", "L", "M", "N", "O", "P", "Q", "R", "Y", "AC"}
     for r in range(2, 101):
         for c in range(1, len(POLICY_COLS) + 1):
             cell = ws.cell(r, c)
@@ -326,6 +327,7 @@ def build_dashboard(wb):
         ("Monthly equivalent  每月相当于", "=B15/12"),
         ("% of annual income  占年收入", "=IF(Client!B6>0,B15/Client!B6,0)"),
         ("Premium budget  保费预算", "=Client!B18"),
+        ("Total cash value (inforce + paid-up)  现金价值总额", f"={SUM('AC')}"),
     ]
     for r, (label, f) in enumerate(prem, 15):
         ws.cell(r, 1, label).font = Font(bold=True)
