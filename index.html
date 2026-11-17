@@ -239,6 +239,13 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
 .route.good{background:#e3f4ea;color:#1d6b3a}.route.warn{background:#fff1dc;color:#8a5300}.route.bad{background:#fde4e4;color:#9b1c1c}.route.na{background:#eee;color:#555}
 .appx td.who{background:var(--lilac,#f1e9fb);font-weight:700}
 .fam-t td.none{color:#9b1c1c}
+/* cash value row on page 1: compact so the page still fits on A4 */
+#report .cv-tiles .tile{padding:5px 10px}
+#report .cv-tiles .tile .v{font-size:15px;margin-top:0}
+#report .cv-tiles .tile .s{font-size:9.5px;line-height:1.25}
+#report .page.has-cv .sec{margin:8px 0 4px}
+#report .page.has-cv .cov-row{padding:2px 0}
+#report .page.has-cv .hero{margin-bottom:10px}
 </style>
 </head>
 <body>
@@ -264,7 +271,7 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
       <button id="btnChangePin" class="install" hidden>Change PIN 改密码</button>
     </span>
   </div>
-  <p>See a client's existing cover, premium, nominees and purpose on one page, then hand them a report to keep. <small style="opacity:.7">· version 12/11/2026 (2e3ff8)</small></p>
+  <p>See a client's existing cover, premium, nominees and purpose on one page, then hand them a report to keep. <small style="opacity:.7">· version 17/11/2026 (8c0acd)</small></p>
   <div id="iosTip" class="ios-tip" hidden>To install on iPhone: tap <b>Share</b> <span aria-hidden="true">⎋</span> then <b>Add to Home Screen</b>. 安装到 iPhone：点<b>分享</b>，再选<b>添加到主屏幕</b>。 <button id="iosTipClose" aria-label="Close">✕</button></div>
 </div>
 
@@ -1806,7 +1813,7 @@ function generate(opts){
     : `<div class="sec"><h3>Where your premium goes</h3><span class="zh">保费用途 (按目的 · 占年收入)</span></div>
     <div class="cov">${premBars || '<span class="muted">No premium recorded.</span>'}</div>`;
   const covSection = style==='C' ? covTable : `<div class="cov">${sm.areas.map(coverageRow).join('')}${legend}</div>`;
-  const page1 = `<div class="page">${head}
+  const page1 = `<div class="page${sm.cv.known ? ' has-cv' : ''}">${head}
     <div class="tiles">
       <div class="tile"><div class="k">Life cover 身故保障</div><div class="v">${fmtRM(sm.areas[0].val)}</div><div class="s">${sm.live.length} inforce policies</div></div>
       <div class="tile"><div class="k">Critical illness 严重疾病</div><div class="v">${fmtRM(sm.areas[2].val)}</div><div class="s">${sm.eci?'+ early CI '+fmtRM(sm.eci):'&nbsp;'}</div></div>
@@ -1993,7 +2000,7 @@ $('btnPdf').onclick = async () => {
 const XL_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const colLetter = n => { let s=''; while (n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; };
 const colNum = c => c.split('').reduce((n,ch)=>n*26+ch.charCodeAt(0)-64, 0);
-const excelSerial = d => (Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899,11,30)) / 864e5;
+const excelSerial = d => Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()) - Date.UTC(1899,11,30)) / 864e5);   // rounds away SheetJS's few-second timezone drift
 function xlSet(doc, ref, val){
   if (val===null || val===undefined || val==='' || (typeof val==='number' && !isFinite(val))) return;
   let c = doc.querySelector(`c[r="${ref}"]`);
@@ -2026,6 +2033,16 @@ async function addPlainSheets(zip, extra){
   let sid = Math.max(...[...wbx.matchAll(/sheetId="(\d+)"/g)].map(m=>+m[1]));
   let rid = Math.max(...[...rels.matchAll(/Id="rId(\d+)"/g)].map(m=>+m[1]));
   const used = new Set([...wbx.matchAll(/<sheet [^>]*name="([^"]+)"/g)].map(m=>m[1]));
+  // add a dd/mm/yyyy cell style so dates in carried sheets stay dates (not 46325)
+  let dateS = null;
+  if (zip.file('xl/styles.xml')){
+    let st = await zip.file('xl/styles.xml').async('string');
+    const fid = 190;
+    if (/<numFmts[^>]*count="\d+"/.test(st)) st = st.replace(/<numFmts([^>]*)count="(\d+)"([^>]*)>/, (m,a,c,b)=>`<numFmts${a}count="${+c+1}"${b}><numFmt numFmtId="${fid}" formatCode="dd/mm/yyyy"/>`);
+    else st = st.replace(/(<styleSheet[^>]*>)/, `$1<numFmts count="1"><numFmt numFmtId="${fid}" formatCode="dd/mm/yyyy"/></numFmts>`);
+    const m = st.match(/<cellXfs count="(\d+)"/);
+    if (m){ dateS = +m[1]; st = st.replace(/<cellXfs count="\d+"/, `<cellXfs count="${dateS+1}"`).replace('</cellXfs>', `<xf numFmtId="${fid}" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>`); zip.file('xl/styles.xml', st); }
+  }
   for (const sh of extra){
     let name = String(sh.name).replace(/[\\/?*\[\]:]/g,'-').slice(0,31);
     if (used.has(name)) continue; used.add(name);
@@ -2033,7 +2050,7 @@ async function addPlainSheets(zip, extra){
     const rows = (sh.aoa||[]).map((r,i)=>`<row r="${i+1}">${r.map((v,j)=>{
       if (v===''||v==null) return '';
       const ref = colLetter(j+1)+(i+1);
-      if (v instanceof Date) v = excelSerial(v);
+      if (v instanceof Date) return `<c r="${ref}"${dateS!=null?` s="${dateS}"`:''}><v>${excelSerial(v)}</v></c>`;
       if (typeof v==='number' && isFinite(v)) return `<c r="${ref}"><v>${v}</v></c>`;
       return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`; }).join('')}</row>`).join('');
     const cols = sh.widths ? `<cols>${sh.widths.map((w,j)=>`<col min="${j+1}" max="${j+1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '';
@@ -2065,6 +2082,7 @@ function carriedSheets(prevWb, currentName){
   }
   reviews.forEach(n=>out.push({name:n, aoa:aoaOf(n)}));
   prevWb.SheetNames.filter(n=>CVH_RE.test(n)).forEach(n=>out.push({name:n, aoa:aoaOf(n)}));
+  prevWb.SheetNames.filter(n=>/^plan details/i.test(n)).forEach(n=>out.push({name:n, aoa:aoaOf(n), widths:[13,26,52,10,7,15,15,14,14,15,24,12]}));
   return out;
 }
 const xlsxTitle = () => `Policy_Review_-_${normName(S.client.name||'Client').replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,'_')}.xlsx`;
