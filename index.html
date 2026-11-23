@@ -271,7 +271,7 @@ table.covt .mini i{position:absolute;left:0;top:0;bottom:0;background:var(--purp
       <button id="btnChangePin" class="install" hidden>Change PIN 改密码</button>
     </span>
   </div>
-  <p>See a client's existing cover, premium, nominees and purpose on one page, then hand them a report to keep. <small style="opacity:.7">· version 17/11/2026 (8c0acd)</small></p>
+  <p>See a client's existing cover, premium, nominees and purpose on one page, then hand them a report to keep. <small style="opacity:.7">· version 23/11/2026 (e6b060)</small></p>
   <div id="iosTip" class="ios-tip" hidden>To install on iPhone: tap <b>Share</b> <span aria-hidden="true">⎋</span> then <b>Add to Home Screen</b>. 安装到 iPhone：点<b>分享</b>，再选<b>添加到主屏幕</b>。 <button id="iosTipClose" aria-label="Close">✕</button></div>
 </div>
 
@@ -858,6 +858,9 @@ function stdSel(f){
   if (v===undefined || v==='' || v==null) return f.defSel;
   return f.presets.some(([o])=>o==='v:'+(+v)) ? 'v:'+(+v) : 'custom';
 }
+// a report already on screen follows any change on the Client tab (standards, income, name…)
+let refreshTimer = null;
+function refreshReport(){ clearTimeout(refreshTimer); refreshTimer = setTimeout(()=>{ if (S.generated) generate({quiet:true}); }, 300); }
 function renderClient(){
   $('clientForm').innerHTML = CLIENT_FIELDS.map(f=>{
     if (f.presets){
@@ -881,10 +884,12 @@ function renderClient(){
     if (v.startsWith('v:')) S.client[k] = +v.slice(2);
     inp.hidden = v!=='custom'; if (v==='custom') inp.focus();
     if (S.policies.length) runChecks();
+    refreshReport();
   });
   $('clientForm').querySelectorAll('input').forEach(inp=>inp.oninput=()=>{
     S.client[inp.dataset.cl] = inp.type==='number' ? (inp.value===''?'':+inp.value) : inp.value;
     if (S.policies.length) runChecks();
+    refreshReport();
   });
   CLIENT_FIELDS.forEach(f=>{ if (S.client[f.key]===undefined && f.def!==undefined) S.client[f.key]=f.def; });
   $('cl_dob').addEventListener('change', () => {
